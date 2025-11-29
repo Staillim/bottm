@@ -64,7 +64,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def send_video_by_message_id(update, context, video_msg_id, user_id):
-    """Envía video completo con ficha cuando viene desde canal"""
+    """Envía Mini App con anuncio cuando viene desde canal"""
     db = context.bot_data['db']
     
     # Buscar video por message_id
@@ -79,45 +79,34 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
         await update.message.reply_text("❌ Video no encontrado.")
         return
     
-    # Enviar ficha con poster si tiene metadata
-    if video.poster_url:
-        try:
-            import io
-            import requests as req
-            
-            response = req.get(video.poster_url, timeout=10)
-            response.raise_for_status()
-            photo = io.BytesIO(response.content)
-            photo.name = "poster.jpg"
-            
-            caption = f"🎬 <b>{video.title}</b>\n"
-            if video.year:
-                caption += f"📅 {video.year}\n"
-            if video.vote_average:
-                caption += f"⭐ {video.vote_average/10:.1f}/10\n"
-            if video.runtime:
-                caption += f"⏱️ {video.runtime} min\n"
-            if video.genres:
-                caption += f"🎭 {video.genres}\n"
-            if video.overview:
-                caption += f"\n📝 {video.overview}\n"
-            
-            await context.bot.send_photo(
-                chat_id=user_id,
-                photo=photo,
-                caption=caption,
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            print(f"Error enviando poster: {e}")
+    # Crear token de anuncio (igual que en search.py)
+    from config.settings import WEBAPP_URL, API_SERVER_URL
+    import urllib.parse
     
-    # Enviar video
-    caption_text = f"📹 *{video.title}*"
-    await context.bot.send_video(
-        chat_id=user_id,
-        video=video.file_id,
-        caption=caption_text,
-        parse_mode='Markdown'
+    token = await db.create_ad_token(user_id, video.id, video_msg_id)
+    
+    # Preparar parámetros para la Mini App
+    title_encoded = urllib.parse.quote(video.title)
+    poster_encoded = urllib.parse.quote(video.poster_url or "https://via.placeholder.com/300x450?text=Sin+Poster")
+    api_url_encoded = urllib.parse.quote(API_SERVER_URL)
+    
+    webapp_url = f"{WEBAPP_URL}?token={token}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
+    
+    # Enviar mensaje con botón de Mini App
+    keyboard = [[
+        InlineKeyboardButton(
+            "📺 Ver Anuncio para Continuar",
+            web_app={"url": webapp_url}
+        )
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"🎬 <b>{video.title}</b>\n\n"
+        f"Para ver esta película, primero debes ver un anuncio corto.\n\n"
+        f"👇 Toca el botón de abajo para continuar:",
+        reply_markup=reply_markup,
+        parse_mode="HTML"
     )
 
 async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
