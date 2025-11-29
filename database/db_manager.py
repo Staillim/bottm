@@ -9,7 +9,11 @@ from datetime import datetime
 
 class DatabaseManager:
     def __init__(self):
-        self.engine = create_async_engine(DATABASE_URL, echo=False)
+        self.engine = create_async_engine(
+            DATABASE_URL, 
+            echo=False,
+            connect_args={"statement_cache_size": 0}  # Deshabilitar cache de statements para pgbouncer
+        )
         self.async_session = sessionmaker(
             self.engine, class_=AsyncSession, expire_on_commit=False
         )
@@ -45,27 +49,66 @@ class DatabaseManager:
                        tmdb_id=None, original_title=None, year=None, overview=None,
                        poster_url=None, backdrop_url=None, vote_average=None, 
                        runtime=None, genres=None, channel_message_id=None):
-        async with self.async_session() as session:
-            video = Video(
-                file_id=file_id,
-                message_id=message_id,
-                title=title,
-                description=description,
-                tags=tags,
-                tmdb_id=tmdb_id,
-                original_title=original_title,
-                year=year,
-                overview=overview,
-                poster_url=poster_url,
-                backdrop_url=backdrop_url,
-                vote_average=vote_average,
-                runtime=runtime,
-                genres=genres,
-                channel_message_id=channel_message_id
-            )
-            session.add(video)
-            await session.commit()
-            return video
+        try:
+            async with self.async_session() as session:
+                try:
+                    # Verificar si el video ya existe
+                    result = await session.execute(
+                        select(Video).where(
+                            (Video.file_id == file_id) | (Video.message_id == message_id)
+                        )
+                    )
+                    existing_video = result.scalar_one_or_none()
+                    if existing_video:
+                        # Mostrar advertencia solo una vez por video duplicado
+                        if not hasattr(self, '_duplicate_warnings'):
+                            self._duplicate_warnings = set()
+                        if file_id not in self._duplicate_warnings:
+                            print(f"⚠️ Video duplicado: {file_id} o mensaje {message_id}")
+                            self._duplicate_warnings.add(file_id)
+                        return existing_video
+
+                    # Truncar campos largos
+                    title = title[:500] if title else None
+                    description = description[:500] if description else None
+                    tags = tags[:500] if tags else None
+                    original_title = original_title[:500] if original_title else None
+                    overview = overview[:500] if overview else None
+                    poster_url = poster_url[:500] if poster_url else None
+                    backdrop_url = backdrop_url[:500] if backdrop_url else None
+                    genres = genres[:500] if genres else None
+
+                    # Crear nuevo video
+                    video = Video(
+                        file_id=file_id,
+                        message_id=message_id,
+                        title=title,
+                        description=description,
+                        tags=tags,
+                        tmdb_id=tmdb_id,
+                        original_title=original_title,
+                        year=year,
+                        overview=overview,
+                        poster_url=poster_url,
+                        backdrop_url=backdrop_url,
+                        vote_average=vote_average,
+                        runtime=runtime,
+                        genres=genres,
+                        channel_message_id=channel_message_id
+                    )
+                    session.add(video)
+                    await session.commit()
+                    return video
+                except Exception as e:
+                    print(f"❌ Error al agregar video: {e}")
+                    await session.rollback()
+                    return None
+        except asyncio.CancelledError:
+            print(f"[CANCELLED] Operación cancelada al agregar video con file_id={file_id}")
+            return None
+        except Exception as e:
+            print(f"[ERROR] Error de conexión al agregar video con file_id={file_id}: {e}")
+            return None
     
     def normalize_text(self, text):
         """Normaliza texto: quita acentos, convierte a minúsculas"""
@@ -157,9 +200,16 @@ class DatabaseManager:
             return False
     
     async def get_video_by_message_id(self, message_id):
-        """Obtiene video por message_id del canal de almacenamiento"""
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(Video).where(Video.message_id == message_id)
-            )
-            return result.scalar_one_or_none()
+        """Verifica si un video ya existe en la base de datos por su message_id."""
+        try:
+            async with self.async_session() as session:
+                result = await session.execute(
+                    select(Video).where(Video.message_id == message_id)
+                )
+                return result.scalar_one_or_none()
+        except asyncio.CancelledError:
+            print(f"[CANCELLED] Operación cancelada al buscar video con message_id={message_id}")
+            return None
+        except Exception as e:
+            print(f"[ERROR] Error al buscar video con message_id={message_id}: {e}")
+            return None

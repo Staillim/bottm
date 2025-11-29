@@ -4,6 +4,19 @@ from config.settings import ADMIN_IDS, STORAGE_CHANNEL_ID, VERIFICATION_CHANNEL_
 from utils.tmdb_api import TMDBApi
 import io
 import requests as req
+import os
+
+# Función para obtener el último mensaje indexado (igual que en index_videos.py)
+LAST_INDEX_FILE = "last_indexed_message.txt"
+def get_last_indexed():
+    """Obtiene el último mensaje indexado desde el archivo o comienza desde 812."""
+    if os.path.exists(LAST_INDEX_FILE):
+        try:
+            with open(LAST_INDEX_FILE, 'r') as f:
+                return int(f.read().strip())
+        except:
+            return 812  # Empezar desde 812 si hay error
+    return 812  # Empezar desde 812 si no existe el archivo
 
 async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando para indexar videos - Empieza desde el último mensaje encontrado"""
@@ -16,19 +29,15 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = context.bot_data['db']
     
-    # Obtener todos los videos indexados para encontrar el último message_id
-    videos = await db.search_videos("", limit=10000)
-    ultimo_msg_id = max([v.message_id for v in videos]) if videos else 599
-    
-    # Empezar desde el siguiente mensaje después del último encontrado
-    start_id = ultimo_msg_id + 1
+    # Usar la misma lógica que index_videos.py
+    start_id = get_last_indexed() + 1
     
     await update.message.reply_text(f"🔄 Buscando desde mensaje {start_id}...")
     
     indexed = 0
     skipped = 0
     empty_count = 0
-    ultimo_encontrado = ultimo_msg_id  # Guardar el último mensaje NO vacío
+    ultimo_encontrado = start_id - 1  # Guardar el último mensaje NO vacío
     
     # Buscar hasta 2000 mensajes después del último (ajustable)
     for msg_id in range(start_id, start_id + 2000):
