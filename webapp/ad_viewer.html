@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ver Anuncio - CineStelar</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src='//libtl.com/sdk.js' data-zone='10253964' data-sdk='show_10253964'></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        
+        .container {
+            text-align: center;
+            padding: 20px;
+            max-width: 400px;
+        }
+        
+        .movie-info {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+        
+        .movie-poster {
+            width: 200px;
+            height: 300px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            object-fit: cover;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .movie-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .ad-message {
+            font-size: 16px;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+        
+        .watch-ad-btn {
+            background: linear-gradient(45deg, #f093fb 0%, #f5576c 100%);
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+        
+        .watch-ad-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+        }
+        
+        .watch-ad-btn:disabled {
+            background: gray;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .success-message {
+            display: none;
+            background: rgba(76, 217, 100, 0.2);
+            border: 2px solid #4cd964;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .checkmark {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="movie-info">
+            <img id="moviePoster" class="movie-poster" src="" alt="Poster">
+            <div class="movie-title" id="movieTitle">Cargando...</div>
+            <div class="ad-message">
+                📺 Para ver esta película, primero debes ver un anuncio corto
+            </div>
+            <button class="watch-ad-btn" id="watchAdBtn" onclick="showAd()">
+                ▶️ Ver Anuncio
+            </button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px;">Verificando anuncio...</p>
+        </div>
+        
+        <div class="success-message" id="successMessage">
+            <div class="checkmark">✅</div>
+            <div style="font-size: 18px; font-weight: bold;">¡Anuncio completado!</div>
+            <div style="margin-top: 10px;">Enviando tu película...</div>
+        </div>
+    </div>
+
+    <script>
+        // Inicializar Telegram Web App
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        // Obtener parámetros de la URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const movieTitle = urlParams.get('title');
+        const posterUrl = urlParams.get('poster');
+        
+        // Mostrar información de la película
+        if (movieTitle) {
+            document.getElementById('movieTitle').textContent = decodeURIComponent(movieTitle);
+        }
+        
+        if (posterUrl) {
+            document.getElementById('moviePoster').src = decodeURIComponent(posterUrl);
+        }
+        
+        // Función para mostrar el anuncio
+        async function showAd() {
+            const btn = document.getElementById('watchAdBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Cargando anuncio...';
+            
+            try {
+                // Mostrar anuncio recompensado intersticial
+                await show_10253964();
+                
+                // El anuncio se completó
+                onAdComplete();
+            } catch (error) {
+                console.error('Error al mostrar anuncio:', error);
+                tg.showAlert('Error al cargar el anuncio. Intenta nuevamente.');
+                btn.disabled = false;
+                btn.textContent = '▶️ Ver Anuncio';
+            }
+        }
+        
+        // Función que se ejecuta cuando el anuncio se completa
+        async function onAdComplete() {
+            document.getElementById('watchAdBtn').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+            
+            try {
+                // Obtener URL del servidor desde parámetros o usar default
+                const apiUrl = new URLSearchParams(window.location.search).get('api_url') || 'https://tu-app.onrender.com';
+                
+                // Notificar al servidor que el anuncio se completó
+                const response = await fetch(`${apiUrl}/api/ad-completed`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        token: token,
+                        user_id: tg.initDataUnsafe?.user?.id
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Mostrar mensaje de éxito
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('successMessage').style.display = 'block';
+                    
+                    // Cerrar la Mini App después de 2 segundos
+                    setTimeout(() => {
+                        tg.close();
+                    }, 2000);
+                } else {
+                    throw new Error(data.error || 'Error desconocido');
+                }
+            } catch (error) {
+                console.error('Error al notificar:', error);
+                tg.showAlert('Error al procesar. Contacta al administrador.');
+            }
+        }
+        
+        // Configurar el tema de Telegram
+        document.body.style.background = tg.themeParams.bg_color || document.body.style.background;
+    </script>
+</body>
+</html>

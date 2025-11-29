@@ -1,0 +1,9 @@
+# Netlify configuration
+[build]
+  publish = "webapp"
+  command = "echo 'No build needed'"
+
+[[redirects]]
+  from = "/*"
+  to = "/ad_viewer.html"
+  status = 200
