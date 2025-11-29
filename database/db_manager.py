@@ -9,10 +9,18 @@ from datetime import datetime
 
 class DatabaseManager:
     def __init__(self):
+        if not DATABASE_URL:
+            raise ValueError("DATABASE_URL no está configurada")
+        
+        # Configurar connect_args solo para PostgreSQL
+        connect_args = {}
+        if DATABASE_URL.startswith("postgresql"):
+            connect_args = {"statement_cache_size": 0}  # Deshabilitar cache de statements para pgbouncer
+        
         self.engine = create_async_engine(
             DATABASE_URL, 
             echo=False,
-            connect_args={"statement_cache_size": 0}  # Deshabilitar cache de statements para pgbouncer
+            connect_args=connect_args
         )
         self.async_session = sessionmaker(
             self.engine, class_=AsyncSession, expire_on_commit=False
