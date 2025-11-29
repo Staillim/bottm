@@ -14,8 +14,8 @@ def get_last_indexed():
             with open(LAST_INDEX_FILE, 'r') as f:
                 return int(f.read().strip())
         except:
-            return 1  # Empezar desde 1 si hay error
-    return 1  # Empezar desde 1 si no existe el archivo
+            return 616  # Empezar desde 616 si hay error
+    return 616  # Empezar desde 616 si no existe el archivo
 
 def save_last_indexed(msg_id):
     """Guarda el último mensaje indexado en el archivo"""
