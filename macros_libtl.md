@@ -11,7 +11,7 @@ Uso: Identifica al usuario que ve el anuncio, enviado en el body del POST a /api
 
 ## Identificación de zona
 —
-ID de zona principal, en Int.
+ID de zona principal, en Int.taskkill /F /IM python.exe /T 2>$null
 
 Valor: 10253964
 Tipo: Int
