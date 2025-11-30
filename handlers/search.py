@@ -61,30 +61,30 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     # Obtener ID del video
     video_id = int(query.data.split('_')[1])
     db = context.bot_data['db']
-    
+
     video = await db.get_video_by_id(video_id)
-    
+
     if not video:
         await query.edit_message_text("❌ Video no encontrado.")
         return
-    
+
     # Crear token de anuncio
     from config.settings import BOT_USERNAME, WEBAPP_URL, API_SERVER_URL
     import urllib.parse
-    
+
     token = await db.create_ad_token(query.from_user.id, video.id)
-    
+
     # Preparar parámetros para la Mini App
     title_encoded = urllib.parse.quote(video.title)
     poster_encoded = urllib.parse.quote(video.poster_url or "https://via.placeholder.com/300x450?text=Sin+Poster")
     api_url_encoded = urllib.parse.quote(API_SERVER_URL)
-    
+
     webapp_url = f"{WEBAPP_URL}?token={token}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
-    
+
     # Enviar mensaje con botón de Mini App
     keyboard = [[
         InlineKeyboardButton(
@@ -93,7 +93,7 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(
         f"🎬 <b>{video.title}</b>\n\n"
         f"Para ver esta película, primero debes ver un anuncio corto.\n\n"

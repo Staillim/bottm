@@ -15,15 +15,23 @@ async def test_db():
             count = result.scalar()
             print(f"📊 Total de videos en BD: {count}")
 
-        # Probar buscar un video específico (mensaje 859)
-        video_859 = await db.get_video_by_message_id(859)
-        if video_859:
-            print(f"📹 Video 859 encontrado: {video_859.title}")
-        else:
-            print("📭 Video 859 no encontrado en BD")
+        # Probar buscar videos con "hulk"
+        print("\n🔍 Probando búsqueda de 'hulk'...")
+        hulk_videos = await db.search_videos("hulk")
+        print(f"📹 Videos encontrados con 'hulk': {len(hulk_videos)}")
+        for video in hulk_videos:
+            print(f"  - {video.title}")
+
+        # Mostrar algunos videos de ejemplo
+        print("\n📋 Primeros 5 videos en la BD:")
+        async with db.async_session() as session:
+            result = await session.execute(select(Video).limit(5))
+            videos = result.scalars().all()
+            for video in videos:
+                print(f"  - ID: {video.id}, Título: {video.title}")
 
     except Exception as e:
-        print(f"❌ Error en la conexión a BD: {e}")
+        print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
 

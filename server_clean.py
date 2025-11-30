@@ -1,39 +1,35 @@
 """
-Servidor unificado que ejecuta Flask (API) y Bot de Telegram simultáneamente.
-Diseñado para correr en Render.com
+Servidor Flask para el bot de CineStelar
 """
 from flask import Flask, send_file, request, jsonify
 from flask_cors import CORS
 import asyncio
-import threading
 from database.db_manager import DatabaseManager
 from telegram import Bot
-from config.settings import BOT_TOKEN, STORAGE_CHANNEL_ID, FLASK_PORT
+from config.settings import BOT_TOKEN, STORAGE_CHANNEL_ID
 import os
-import sys
 
 app = Flask(__name__)
 CORS(app)
 
-# Inicializar base de datos
+# Inicializar base de datos global
 db = None
 
-async def init_db():
-    """Inicializar base de datos de forma asíncrona"""
-    global db
-    if db is None:
-        db = DatabaseManager()
-        await db.init_db()
-        print("✅ Base de datos inicializada")
+@app.route('/')
+def home():
+    """Página de inicio"""
+    return jsonify({'status': 'ok', 'service': 'CineStelar API Server'})
 
 @app.route('/ad_viewer.html')
 def serve_webapp():
-    """Sirve la Mini App de anuncios (versión simplificada)"""
-    return send_file('webapp/ad_viewer_simple.html')
+    """Sirve la Mini App de anuncios"""
+    return send_file('webapp/ad_viewer.html')
 
 @app.route('/api/ad-completed', methods=['POST'])
 def ad_completed():
     """Endpoint que se llama cuando el usuario completa el anuncio"""
+    global db
+
     try:
         data = request.json
         token = data.get('token')
@@ -52,7 +48,9 @@ def ad_completed():
         try:
             # Inicializar DB si no está inicializada
             if db is None:
-                loop.run_until_complete(init_db())
+                db = DatabaseManager()
+                loop.run_until_complete(db.init_db())
+                print("✅ Base de datos inicializada")
 
             # Validar token
             ad_token = loop.run_until_complete(db.get_ad_token(token))
@@ -164,35 +162,12 @@ def ad_completed():
 @app.route('/health')
 def health():
     """Endpoint de salud para verificar que el servidor está corriendo"""
-    return jsonify({'status': 'ok', 'service': 'CineStelar WebApp Server'})
-
-def run_telegram_bot():
-    """Ejecuta el bot de Telegram en un hilo separado"""
-    try:
-        print("🤖 Iniciando Bot de Telegram...")
-        import subprocess
-        result = subprocess.run([sys.executable, "main.py"], capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"❌ Error en bot: {result.stderr}")
-        else:
-            print("✅ Bot finalizado correctamente")
-    except Exception as e:
-        print(f"❌ Error ejecutando bot: {e}")
+    return jsonify({'status': 'ok', 'service': 'CineStelar API Server'})
 
 if __name__ == '__main__':
-    # Inicializar base de datos
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(init_db())
-
-    # Iniciar bot en hilo separado
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-
-    # Iniciar servidor Flask
-    port = int(os.environ.get('PORT', FLASK_PORT))
+    port = int(os.environ.get('PORT', 5000))
     print(f"🌐 Servidor Flask iniciado en puerto {port}")
     print(f"📱 Mini App disponible en: /ad_viewer.html")
-    print(f"🤖 Bot de Telegram ejecutándose en segundo plano")
+    print(f"🤖 API lista para recibir peticiones de anuncios")
 
     app.run(host='0.0.0.0', port=port, debug=False)

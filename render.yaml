@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python server.py
+    startCommand: python server_clean.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
