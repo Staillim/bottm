@@ -55,15 +55,40 @@ def ad_completed():
 
         print(f"📡 Recibida petición ad-completed: token={token[:10] if token else None}..., user_id={user_id}")
 
+        # Verificar que el token y user_id estén presentes
         if not token:
             print("❌ Token no proporcionado")
             return jsonify({'success': False, 'error': 'Token no proporcionado'}), 400
 
-        if db is None:
-            print("❌ Base de datos no inicializada")
-            return jsonify({'success': False, 'error': 'Base de datos no disponible'}), 500
+        if not user_id:
+            print("❌ User ID no proporcionado")
+            return jsonify({'success': False, 'error': 'User ID no proporcionado'}), 400
 
-        # Ejecutar operaciones async en un nuevo loop
+        # Inicializar DB si no está inicializada (lazy initialization)
+        if db is None:
+            print("🔄 Inicializando DB...")
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                db = DatabaseManager()
+                loop.run_until_complete(db.init_db())
+                loop.close()
+                print("✅ DB inicializada")
+            except Exception as e:
+                print(f"❌ Error inicializando DB: {e}")
+                return jsonify({'success': False, 'error': 'Error de base de datos'}), 500
+
+        # Inicializar bot si no está inicializado
+        if bot is None:
+            print("🔄 Inicializando bot...")
+            try:
+                bot = Bot(token=BOT_TOKEN)
+                print("✅ Bot inicializado")
+            except Exception as e:
+                print(f"❌ Error inicializando bot: {e}")
+                return jsonify({'success': False, 'error': 'Error de bot'}), 500
+
+        # Ejecutar operaciones async
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
