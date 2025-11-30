@@ -190,7 +190,7 @@
             
             try {
                 // Obtener URL del servidor desde parámetros o usar default
-                const apiUrl = new URLSearchParams(window.location.search).get('api_url') || 'https://tu-app.onrender.com';
+                const apiUrl = new URLSearchParams(window.location.search).get('api_url') || 'https://cinestelar-bot.onrender.com';
                 
                 // Notificar al servidor que el anuncio se completó
                 const response = await fetch(`${apiUrl}/api/ad-completed`, {
