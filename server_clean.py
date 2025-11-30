@@ -183,24 +183,6 @@ def test():
     return jsonify({'status': 'ok', 'message': 'Test endpoint working', 'db_initialized': db is not None, 'bot_initialized': bot is not None})
 
 if __name__ == '__main__':
-    # Inicializar base de datos y bot de forma síncrona
-    print("🔄 Inicializando servicios...")
-
-    try:
-        # Crear un nuevo loop para inicializar
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        try:
-            loop.run_until_complete(init_database())
-            loop.run_until_complete(init_bot())
-            print("✅ Todos los servicios inicializados")
-        finally:
-            loop.close()
-    except Exception as e:
-        print(f"⚠️ Error inicializando servicios: {e}")
-        print("Continuando sin inicialización completa...")
-
     port = int(os.environ.get('PORT', 5000))
     print(f"🌐 Servidor Flask iniciado en puerto {port}")
     print(f"📱 Mini App disponible en: /ad_viewer.html")
