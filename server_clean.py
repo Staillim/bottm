@@ -177,10 +177,10 @@ def ad_completed():
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Error interno del servidor'}), 500
 
-@app.route('/health')
-def health():
-    """Endpoint de salud para verificar que el servidor está corriendo"""
-    return jsonify({'status': 'ok', 'service': 'CineStelar API Server'})
+@app.route('/test')
+def test():
+    """Endpoint de prueba"""
+    return jsonify({'status': 'ok', 'message': 'Test endpoint working', 'db_initialized': db is not None, 'bot_initialized': bot is not None})
 
 if __name__ == '__main__':
     # Inicializar base de datos y bot de forma síncrona
