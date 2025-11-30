@@ -183,9 +183,19 @@ def health():
     return jsonify({'status': 'ok', 'service': 'CineStelar API Server'})
 
 if __name__ == '__main__':
-    # Inicializar base de datos y bot antes de iniciar el servidor
-    asyncio.run(init_database())
-    asyncio.run(init_bot())
+    # Inicializar base de datos y bot de forma síncrona
+    print("🔄 Inicializando servicios...")
+
+    # Crear un nuevo loop para inicializar
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    try:
+        loop.run_until_complete(init_database())
+        loop.run_until_complete(init_bot())
+        print("✅ Todos los servicios inicializados")
+    finally:
+        loop.close()
 
     port = int(os.environ.get('PORT', 5000))
     print(f"🌐 Servidor Flask iniciado en puerto {port}")
