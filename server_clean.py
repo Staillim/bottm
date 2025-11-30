@@ -14,6 +14,24 @@ CORS(app)
 
 # Inicializar base de datos global
 db = None
+# Inicializar bot global
+bot = None
+
+async def init_database():
+    """Inicializar la base de datos de forma asíncrona"""
+    global db
+    if db is None:
+        print("🔄 Inicializando base de datos...")
+        db = DatabaseManager()
+        await db.init_db()
+        print("✅ Base de datos inicializada correctamente")
+
+async def init_bot():
+    """Inicializar el bot de Telegram"""
+    global bot
+    if bot is None:
+        bot = Bot(token=BOT_TOKEN)
+        print("✅ Bot de Telegram inicializado")
 
 @app.route('/')
 def home():
@@ -41,17 +59,15 @@ def ad_completed():
             print("❌ Token no proporcionado")
             return jsonify({'success': False, 'error': 'Token no proporcionado'}), 400
 
-        # Ejecutar código async en Flask
+        if db is None:
+            print("❌ Base de datos no inicializada")
+            return jsonify({'success': False, 'error': 'Base de datos no disponible'}), 500
+
+        # Ejecutar operaciones async en un nuevo loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
         try:
-            # Inicializar DB si no está inicializada
-            if db is None:
-                db = DatabaseManager()
-                loop.run_until_complete(db.init_db())
-                print("✅ Base de datos inicializada")
-
             # Validar token
             ad_token = loop.run_until_complete(db.get_ad_token(token))
 
@@ -81,8 +97,10 @@ def ad_completed():
 
             print(f"🎬 Enviando video: {video.title}")
 
-            # Enviar el video al usuario
-            bot = Bot(token=BOT_TOKEN)
+            # Verificar que el bot esté inicializado
+            if bot is None:
+                print("❌ Bot no inicializado")
+                return jsonify({'success': False, 'error': 'Bot no disponible'}), 500
 
             # Si tiene poster, enviarlo primero
             if video.poster_url:
@@ -165,6 +183,10 @@ def health():
     return jsonify({'status': 'ok', 'service': 'CineStelar API Server'})
 
 if __name__ == '__main__':
+    # Inicializar base de datos y bot antes de iniciar el servidor
+    asyncio.run(init_database())
+    asyncio.run(init_bot())
+
     port = int(os.environ.get('PORT', 5000))
     print(f"🌐 Servidor Flask iniciado en puerto {port}")
     print(f"📱 Mini App disponible en: /ad_viewer.html")
