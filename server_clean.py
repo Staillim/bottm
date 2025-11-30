@@ -180,7 +180,7 @@ def ad_completed():
 @app.route('/test')
 def test():
     """Endpoint de prueba"""
-    return jsonify({'status': 'ok', 'message': 'Test endpoint working', 'db_initialized': db is not None, 'bot_initialized': bot is not None})
+    return jsonify({'status': 'ok', 'message': 'Test endpoint working v2', 'db_initialized': db is not None, 'bot_initialized': bot is not None})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
