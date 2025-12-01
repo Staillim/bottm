@@ -1,41 +1,34 @@
 import asyncio
 from database.db_manager import DatabaseManager
+import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 async def test_search():
+    print("🔄 Inicializando base de datos...")
+    db = DatabaseManager()
+    await db.init_db()
+    
+    query = "Agentes"
+    print(f"\n🔍 Buscando: '{query}'")
+    
     try:
-        db = DatabaseManager()
-        await db.init_db()
-        print("✅ Conexión a la base de datos exitosa")
-
-        # Probar diferentes búsquedas
-        test_queries = ["hulk", "Hulk", "increible", "2008", "cadáver", "novia"]
-
-        for query in test_queries:
-            print(f"\n🔍 Probando búsqueda: '{query}'")
-            videos = await db.search_videos(query)
-            print(f"   Resultados: {len(videos)}")
-            for video in videos:
-                print(f"   - {video.title}")
-
-        # Probar normalización
-        print("\n🔧 Probando normalización:")
-        test_texts = ["El Increible Hulk (2008)", "AHORA O NUNCA (2024)", "El Cadáver De La Novia"]
-        for text in test_texts:
-            normalized = db.normalize_text(text)
-            print(f"   '{text}' -> '{normalized}'")
-
-        # Verificar si "hulk" está en "el increible hulk (2008)"
-        query = "hulk"
-        title = "El Increible Hulk (2008)"
-        norm_query = db.normalize_text(query)
-        norm_title = db.normalize_text(title)
-        print(f"\n🔍 Verificación manual:")
-        print(f"   Query normalizado: '{norm_query}'")
-        print(f"   Título normalizado: '{norm_title}'")
-        print(f"   '{norm_query}' in '{norm_title}': {norm_query in norm_title}")
-
+        videos = await db.search_videos(query)
+        
+        if not videos:
+            print("❌ No se encontraron resultados.")
+        else:
+            print(f"✅ Encontrados {len(videos)} resultados:")
+            for idx, video in enumerate(videos, 1):
+                print(f"   {idx}. {video.title} ({video.year})")
+                print(f"      ID: {video.id}")
+                print(f"      Original: {video.original_title}")
+                print(f"      TMDB ID: {video.tmdb_id}")
+                
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Error durante la búsqueda: {e}")
         import traceback
         traceback.print_exc()
 

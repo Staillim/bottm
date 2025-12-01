@@ -3,61 +3,93 @@ from telegram.ext import ContextTypes
 from utils.verification import is_user_member
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    db = context.bot_data['db']
-    
-    # Verificar membresía
-    if not await is_user_member(user.id, context):
-        keyboard = [[InlineKeyboardButton(
-            "✅ Unirme al Canal",
-            url=f"https://t.me/{context.bot_data.get('channel_username', 'CineStellar_S').strip('@')}"
-        )]]
+    try:
+        user = update.effective_user
+        db = context.bot_data['db']
+        
+        print(f"🔍 Comando /buscar recibido de {user.id}: {context.args}")
+        
+        # Verificar membresía
+        if not await is_user_member(user.id, context):
+            keyboard = [[InlineKeyboardButton(
+                "✅ Unirme al Canal",
+                url=f"https://t.me/{context.bot_data.get('channel_username', 'CineStellar_S').strip('@')}"
+            )]]
+            await update.message.reply_text(
+                "❌ Debes estar verificado para usar este comando.\n\n"
+                "Únete al canal y luego usa /start para verificarte.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+        
+        # Obtener término de búsqueda
+        if not context.args:
+            await update.message.reply_text(
+                "🔍 *Uso:* `/buscar <término>`\n\n"
+                "*Ejemplos:*\n"
+                "• `/buscar Avengers`\n"
+                "• `/buscar Thor 2022`\n"
+                "• `/buscar accion`\n\n"
+                "💡 *Tip:* Busca por título, año o género",
+                parse_mode='Markdown'
+            )
+            return
+        
+        query = " ".join(context.args)
+        print(f"🔍 Buscando en DB: '{query}'")
+        
+        # Buscar en la base de datos
+        videos = await db.search_videos(query)
+        print(f"✅ Resultados encontrados: {len(videos) if videos else 0}")
+        
+        if not videos:
+            await update.message.reply_text(
+                f"😔 No se encontraron resultados para: '{query}'\n\n"
+                f"Intenta con otros términos de búsqueda."
+            )
+            return
+        
+        # Registrar búsqueda
+        try:
+            await db.log_search(user.id, query, len(videos))
+        except Exception as e:
+            print(f"⚠️ Error logueando búsqueda: {e}")
+        
+        # Crear botones con resultados
+        keyboard = []
+        text = f"🔍 *Resultados para:* `{query}`\n\n"
+        
+        for idx, video in enumerate(videos, 1):
+            # Agregar rating si existe
+            rating = f"⭐ {video.vote_average/10:.1f}" if video.vote_average else ""
+            year = f"({video.year})" if video.year else ""
+            
+            # Escapar caracteres especiales de Markdown
+            safe_title = video.title.replace("*", "").replace("_", "").replace("`", "")
+            
+            text += f"{idx}. *{safe_title}* {year} {rating}\n"
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📹 {idx}. {safe_title[:45]}..." if len(safe_title) > 45 else f"📹 {idx}. {safe_title}",
+                    callback_data=f"video_{video.id}"
+                )
+            ])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await update.message.reply_text(
-            "❌ Debes estar verificado para usar este comando.\n\n"
-            "Únete al canal y luego usa /start para verificarte.",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-    
-    # Obtener término de búsqueda
-    if not context.args:
-        await update.message.reply_text(
-            "🔍 *Uso:* `/buscar <término>`\n\n"
-            "*Ejemplos:*\n"
-            "• `/buscar Avengers`\n"
-            "• `/buscar Thor 2022`\n"
-            "• `/buscar accion`\n\n"
-            "💡 *Tip:* Busca por título, año o género",
+            text,
+            reply_markup=reply_markup,
             parse_mode='Markdown'
         )
-        return
-    
-    query = " ".join(context.args)
-    
-    # Buscar en la base de datos
-    videos = await db.search_videos(query)
-    
-    if not videos:
-        await update.message.reply_text(
-            f"😔 No se encontraron resultados para: '{query}'\n\n"
-            f"Intenta con otros términos de búsqueda."
-        )
-        return
-    
-    # Registrar búsqueda
-    await db.log_search(user.id, query, len(videos))
-    
-    # Crear botones con resultados
-    keyboard = []
-    text = f"🔍 *Resultados para:* `{query}`\n\n"
-    
-    for idx, video in enumerate(videos, 1):
-        # Agregar rating si existe
-        rating = f"⭐ {video.vote_average/10:.1f}" if video.vote_average else ""
-        year = f"({video.year})" if video.year else ""
-        
-        text += f"{idx}. *{video.title}* {year} {rating}\n"
-        keyboard.append([
+    except Exception as e:
+        print(f"❌ Error crítico en search_command: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            await update.message.reply_text("❌ Ocurrió un error al realizar la búsqueda. Por favor intenta de nuevo.")
+        except:
+            pass
             InlineKeyboardButton(
                 f"📹 {idx}. {video.title[:45]}..." if len(video.title) > 45 else f"📹 {idx}. {video.title}",
                 callback_data=f"video_{video.id}"
