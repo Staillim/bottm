@@ -6,18 +6,6 @@ import io
 import requests as req
 import os
 
-# Función para obtener el último mensaje indexado (igual que en index_videos.py)
-LAST_INDEX_FILE = "last_indexed_message.txt"
-def get_last_indexed():
-    """Obtiene el último mensaje indexado desde el archivo o comienza desde 812."""
-    if os.path.exists(LAST_INDEX_FILE):
-        try:
-            with open(LAST_INDEX_FILE, 'r') as f:
-                return int(f.read().strip())
-        except:
-            return 812  # Empezar desde 812 si hay error
-    return 812  # Empezar desde 812 si no existe el archivo
-
 async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando para indexar videos - Empieza desde el último mensaje encontrado"""
     user = update.effective_user
@@ -29,8 +17,9 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = context.bot_data['db']
     
-    # Usar la misma lógica que index_videos.py
-    start_id = get_last_indexed() + 1
+    # Obtener último mensaje indexado desde la base de datos
+    last_indexed_str = await db.get_config('last_indexed_message', '812')
+    start_id = int(last_indexed_str)
     
     await update.message.reply_text(f"🔄 Buscando desde mensaje {start_id}...")
     
@@ -59,9 +48,11 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # Verificar si ya está indexado
                 try:
-                    existing = await db.get_video_by_id(msg_id)
+                    existing = await db.get_video_by_message_id(msg_id)
                     if existing:
                         skipped += 1
+                        # Guardar progreso
+                        await db.set_config('last_indexed_message', msg_id + 1)
                         await context.bot.delete_message(chat_id=user.id, message_id=msg.message_id)
                         continue
                 except:
@@ -106,6 +97,9 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Agregar video a la base de datos
                 await db.add_video(**video_data)
                 indexed += 1
+                
+                # Guardar progreso después de cada video indexado
+                await db.set_config('last_indexed_message', msg_id + 1)
             
             # Borrar mensaje temporal
             try:
@@ -121,12 +115,16 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if empty_count >= 10:
                 break
     
+    # Guardar el último mensaje procesado
+    await db.set_config('last_indexed_message', ultimo_encontrado + 1)
+    
     await update.message.reply_text(
         f"✅ Indexación completa:\n\n"
         f"📹 Videos nuevos: {indexed}\n"
         f"⏭️ Ya existentes: {skipped}\n"
         f"📊 Total: {indexed + skipped} videos\n"
-        f"🔚 Último mensaje: {ultimo_encontrado}"
+        f"🔚 Último mensaje: {ultimo_encontrado}\n"
+        f"💾 Guardado en BD: {ultimo_encontrado + 1}"
     )
 
 async def publish_to_verification_channel(context, movie_data, storage_msg_id):
