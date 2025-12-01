@@ -36,12 +36,14 @@ async def auto_index_episodes(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         else:
             # No hay episodios previos, pedir el primero
-        await update.message.reply_text(
-            "⚠️ Por favor, reenvía el PRIMER episodio de la serie del canal\n"
-            "(ej: el mensaje con 1x1 en el caption)\n\n"
-            "Buscaré automáticamente los siguientes episodios.",
-            parse_mode='HTML'
-        )        # Guardar contexto para cuando reenvíe el mensaje
+            await update.message.reply_text(
+                "⚠️ Por favor, reenvía el PRIMER episodio de la serie del canal\n"
+                "(ej: el mensaje con 1x1 en el caption)\n\n"
+                "Buscaré automáticamente los siguientes episodios.",
+                parse_mode='HTML'
+            )
+        
+        # Guardar contexto para cuando reenvíe el mensaje
         context.user_data['auto_index_show_id'] = show.id
         context.user_data['auto_index_show_name'] = show.name
         context.user_data['waiting_for_first_episode'] = True
