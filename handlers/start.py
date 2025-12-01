@@ -71,30 +71,47 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Usuario verificado - actualizar verificación
             await db.update_user_verification(user.id, True)
             
-            # Mostrar la serie directamente usando el mismo flujo que los callbacks
-            from handlers.menu import show_seasons_menu
+            # Obtener serie y temporadas
+            show = await db.get_tv_show_by_id(series_id)
+            if not show:
+                await update.message.reply_text("❌ Serie no encontrada.")
+                return
             
-            # Crear un callback query falso
-            class FakeQuery:
-                def __init__(self, message):
-                    self.message = message
-                    self.from_user = message.from_user
-                
-                async def answer(self):
-                    pass
-                
-                async def edit_message_text(self, text, **kwargs):
-                    await self.message.reply_text(text, **kwargs)
+            seasons = await db.get_seasons_for_show(series_id)
+            if not seasons:
+                await update.message.reply_text(
+                    f"❌ No hay episodios disponibles para <b>{show.name}</b>",
+                    parse_mode='HTML'
+                )
+                return
             
-            # Crear update con callback query falso
-            fake_query = FakeQuery(update.message)
-            fake_update = type('obj', (object,), {
-                'callback_query': fake_query,
-                'effective_user': user
-            })()
+            # Guardar estado del usuario
+            await db.set_user_state(user.id, "series_seasons", series_id)
             
-            print(f"✅ Usuario verificado, mostrando temporadas de la serie...")
-            await show_seasons_menu(fake_update, context, series_id)
+            # Construir botones de temporadas
+            keyboard = []
+            for season_number, episode_count in seasons:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"Temporada {season_number} ({episode_count} episodios)",
+                        callback_data=f"season_{series_id}_{season_number}"
+                    )
+                ])
+            
+            keyboard.append([InlineKeyboardButton("⬅️ Volver a series", callback_data="menu_series")])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            message_text = f"📺 <b>{show.name}</b>"
+            if show.year:
+                message_text += f" ({show.year})"
+            message_text += f"\n\n🎬 <b>Temporadas disponibles:</b>"
+            
+            print(f"✅ Enviando menú de temporadas para {show.name}")
+            await update.message.reply_text(
+                text=message_text,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
             return
     
     # Verificar membresía
