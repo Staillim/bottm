@@ -269,6 +269,21 @@ class DatabaseManager:
                 return True
             return False
     
+    async def has_valid_token(self, user_id, content_id):
+        """
+        Verifica si el usuario tiene un token válido (completado) para este contenido
+        content_id puede ser video_id o episode_id
+        """
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(AdToken)
+                .where(AdToken.user_id == user_id)
+                .where(AdToken.video_id == content_id)
+                .where(AdToken.completed == True)
+            )
+            token = result.scalar_one_or_none()
+            return token is not None
+    
     async def get_video_by_message_id(self, message_id):
         """Verifica si un video ya existe en la base de datos por su message_id."""
         try:
@@ -496,23 +511,14 @@ class DatabaseManager:
     async def set_user_state(self, user_id, menu, show_id=None):
         """Guarda el estado de navegación del usuario"""
         async with self.async_session() as session:
-            result = await session.execute(
-                select(UserNavigationState).where(UserNavigationState.user_id == user_id)
+            # Use merge to handle both insert and update
+            state = UserNavigationState(
+                user_id=user_id,
+                current_menu=menu,
+                selected_show_id=show_id,
+                last_interaction=datetime.utcnow()
             )
-            state = result.scalar_one_or_none()
-            
-            if state:
-                state.current_menu = menu
-                state.selected_show_id = show_id
-                state.last_interaction = datetime.utcnow()
-            else:
-                state = UserNavigationState(
-                    user_id=user_id,
-                    current_menu=menu,
-                    selected_show_id=show_id
-                )
-                session.add(state)
-            
+            await session.merge(state)
             await session.commit()
             return True
     
