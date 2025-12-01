@@ -13,6 +13,186 @@ db = DatabaseManager()
 tmdb = TMDBApi()
 logger = logging.getLogger(__name__)
 
+async def auto_index_episodes(update: Update, context: ContextTypes.DEFAULT_TYPE, show):
+    """
+    Busca automáticamente mensajes en el canal con formato S#x# y los indexa
+    Solo busca a partir del último mensaje indexado para evitar duplicados
+    """
+    try:
+        # Verificar si ya hay episodios indexados para esta serie
+        existing_episodes = await db.get_episodes_by_show(show.id)
+        
+        if existing_episodes:
+            # Hay episodios previos, buscar solo nuevos
+            # Encontrar el message_id más alto (el último indexado)
+            last_message_id = max(ep.message_id for ep in existing_episodes)
+            
+            await update.message.reply_text(
+                f"⚠️ Ya hay {len(existing_episodes)} episodio(s) indexado(s).\n\n"
+                f"Para indexar MÁS episodios, reenvía el PRIMER mensaje NUEVO\n"
+                f"(debe ser posterior al último ya indexado)\n\n"
+                f"O usa /terminar_indexacion si ya terminaste.",
+                parse_mode='HTML'
+            )
+        else:
+            # No hay episodios previos, pedir el primero
+            await update.message.reply_text(
+                "⚠️ Por favor, reenvía el PRIMER episodio de la serie del canal\n"
+                "(ej: el mensaje con S1x1)\n\n"
+                "Buscaré automáticamente los siguientes episodios.",
+                parse_mode='HTML'
+            )
+        
+        # Guardar contexto para cuando reenvíe el mensaje
+        context.user_data['auto_index_show_id'] = show.id
+        context.user_data['auto_index_show_name'] = show.name
+        context.user_data['waiting_for_first_episode'] = True
+        
+        return 0
+            
+    except Exception as e:
+        logger.error(f"Error en auto_index_episodes: {e}")
+        return 0
+
+async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Procesa la indexación automática desde un mensaje reenviado
+    """
+    if not context.user_data.get('waiting_for_first_episode'):
+        return False
+    
+    # Verificar que sea un mensaje reenviado del canal
+    if not update.message.forward_from_chat:
+        await update.message.reply_text("❌ Debes reenviar un mensaje del canal de almacenamiento.")
+        return True
+    
+    show_id = context.user_data.get('auto_index_show_id')
+    show_name = context.user_data.get('auto_index_show_name')
+    
+    if not show_id:
+        await update.message.reply_text("❌ Error: No hay serie en proceso de indexación.")
+        return True
+    
+    # Obtener ID del mensaje reenviado
+    start_message_id = update.message.forward_from_message_id
+    channel_id = update.message.forward_from_chat.id
+    
+    await update.message.reply_text(
+        f"🔍 Buscando episodios desde el mensaje #{start_message_id}...\n"
+        f"Solo indexaré episodios que NO estén ya en la base de datos.",
+        parse_mode='HTML'
+    )
+    
+    # Buscar episodios hacia adelante desde ese mensaje
+    pattern = r'[Ss](\d+)[xX](\d+)'
+    indexed_count = 0
+    skipped_count = 0
+    search_range = 200  # Buscar hasta 200 mensajes hacia adelante
+    
+    show = await db.get_tv_show_by_id(show_id)
+    
+    for offset in range(search_range):
+        try:
+            msg_id = start_message_id + offset
+            
+            # Intentar obtener el mensaje
+            try:
+                msg = await context.bot.forward_message(
+                    chat_id=update.effective_user.id,
+                    from_chat_id=channel_id,
+                    message_id=msg_id
+                )
+                
+                # Eliminar el mensaje reenviado inmediatamente
+                await msg.delete()
+                
+            except Exception:
+                # Mensaje no existe o no es accesible
+                continue
+            
+            # Buscar patrón S#x# en el caption
+            text_to_search = msg.caption if msg.caption else (msg.text if msg.text else "")
+            
+            match = re.search(pattern, text_to_search)
+            if match and msg.video:
+                season_number = int(match.group(1))
+                episode_number = int(match.group(2))
+                
+                # IMPORTANTE: Verificar si ya existe para evitar duplicados
+                existing = await db.get_episode(show_id, season_number, episode_number)
+                if existing:
+                    skipped_count += 1
+                    logger.info(f"⏭️ Saltando S{season_number}x{episode_number} - ya existe")
+                    continue
+                
+                # Buscar info en TMDB
+                season_details = tmdb.get_season_details(show.tmdb_id, season_number)
+                episode_info = None
+                if season_details and season_details.get('episodes'):
+                    for ep in season_details['episodes']:
+                        if ep['episode_number'] == episode_number:
+                            episode_info = ep
+                            break
+                
+                # Guardar episodio
+                episode = await db.add_episode(
+                    tv_show_id=show_id,
+                    file_id=msg.video.file_id,
+                    message_id=msg_id,
+                    season_number=season_number,
+                    episode_number=episode_number,
+                    title=episode_info.get('name') if episode_info else None,
+                    overview=episode_info.get('overview') if episode_info else None,
+                    air_date=episode_info.get('air_date') if episode_info else None,
+                    runtime=episode_info.get('runtime') if episode_info else None,
+                    still_path=episode_info.get('still_path') if episode_info else None,
+                    channel_message_id=msg_id
+                )
+                
+                if episode:
+                    indexed_count += 1
+                    if indexed_count % 5 == 0:
+                        await update.message.reply_text(f"📹 {indexed_count} episodios indexados...")
+        
+        except Exception as e:
+            logger.error(f"Error procesando mensaje {msg_id}: {e}")
+            continue
+    
+    # Limpiar contexto
+    context.user_data.pop('waiting_for_first_episode', None)
+    context.user_data.pop('auto_index_show_id', None)
+    context.user_data.pop('auto_index_show_name', None)
+    
+    if indexed_count > 0:
+        seasons = await db.get_seasons_for_show(show_id)
+        total_episodes = sum(count for _, count in seasons)
+        
+        status_msg = f"✅ Indexación completada:\n\n"
+        status_msg += f"📺 <b>{show_name}</b>\n"
+        status_msg += f"📹 {indexed_count} episodio(s) NUEVOS indexados\n"
+        if skipped_count > 0:
+            status_msg += f"⏭️ {skipped_count} ya existían (saltados)\n"
+        status_msg += f"📊 Total en DB: {total_episodes} episodios\n\n"
+        status_msg += f"Usa /start para buscar la serie."
+        
+        await update.message.reply_text(status_msg, parse_mode='HTML')
+    else:
+        if skipped_count > 0:
+            await update.message.reply_text(
+                f"ℹ️ No hay episodios nuevos.\n\n"
+                f"⏭️ {skipped_count} episodio(s) ya estaban indexados.\n\n"
+                f"Todo está al día! ✅",
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ No se encontraron episodios con formato S#x#\n\n"
+                f"Asegúrate de que los mensajes tengan el formato correcto en el caption.",
+                parse_mode='HTML'
+            )
+    
+    return True
+
 async def index_series_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Comando /indexar_serie - Indexa una nueva serie con sus episodios
@@ -92,22 +272,39 @@ async def index_series_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ Error al guardar la serie en la base de datos.")
         return
     
-    # Guardar ID de la serie en el contexto del usuario para las siguientes operaciones
-    context.user_data['indexing_show_id'] = show.id
-    context.user_data['indexing_show_name'] = show.name
-    
+    # Buscar automáticamente episodios en el canal
     await update.message.reply_text(
         f"✅ Serie indexada correctamente:\n\n"
         f"📺 <b>{show.name}</b> ({show.year})\n"
         f"🎬 Temporadas: {show.number_of_seasons}\n"
         f"⭐ Calificación: {show.vote_average}/10\n\n"
-        f"Ahora puedes empezar a indexar episodios.\n"
-        f"Reenvía mensajes del canal y responde con el formato:\n"
-        f"<code>S1x1</code> (Temporada 1, Episodio 1)\n"
-        f"<code>S2x5</code> (Temporada 2, Episodio 5)\n\n"
-        f"O usa el comando /indexar_episodio",
+        f"🔍 Buscando episodios en el canal...",
         parse_mode='HTML'
     )
+    
+    # Buscar y indexar episodios automáticamente
+    indexed_count = await auto_index_episodes(update, context, show)
+    
+    if indexed_count > 0:
+        await update.message.reply_text(
+            f"✅ Indexación automática completada:\n\n"
+            f"📺 <b>{show.name}</b>\n"
+            f"📹 {indexed_count} episodio(s) indexado(s)\n\n"
+            f"Puedes usar /start para buscar la serie.",
+            parse_mode='HTML'
+        )
+    else:
+        # Guardar ID de la serie para indexación manual
+        context.user_data['indexing_show_id'] = show.id
+        context.user_data['indexing_show_name'] = show.name
+        
+        await update.message.reply_text(
+            f"⚠️ No se encontraron episodios con formato S#x# en el canal.\n\n"
+            f"Puedes indexar manualmente respondiendo mensajes con:\n"
+            f"<code>S1x1</code> (Temporada 1, Episodio 1)\n"
+            f"<code>S2x5</code> (Temporada 2, Episodio 5)",
+            parse_mode='HTML'
+        )
 
 async def index_episode_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
