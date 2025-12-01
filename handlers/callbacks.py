@@ -8,8 +8,9 @@ from handlers.menu import (
     main_menu, movies_menu, series_menu,
     show_seasons_menu, show_episodes_menu
 )
-from config.settings import STORAGE_CHANNEL_ID
+from config.settings import STORAGE_CHANNEL_ID, WEBAPP_URL, API_SERVER_URL
 import logging
+import urllib.parse
 
 db = DatabaseManager()
 logger = logging.getLogger(__name__)
@@ -198,13 +199,17 @@ async def show_movie_ad(update: Update, context: ContextTypes.DEFAULT_TYPE, vide
     query = update.callback_query
     user_id = update.effective_user.id
     
-    # Obtener configuración de anuncios
-    ad_url = await db.get_config("ad_url", "https://ejemplo.com")
+    # Construir URL con parámetros
+    title_encoded = urllib.parse.quote(video.title or "Película")
+    poster_encoded = urllib.parse.quote(video.poster_url or "")
+    api_url_encoded = urllib.parse.quote(API_SERVER_URL)
+    
+    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}&content_type=movie"
     
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     
     keyboard = [
-        [InlineKeyboardButton("📱 Ver anuncio", web_app={"url": ad_url})],
+        [InlineKeyboardButton("📱 Ver anuncio", web_app={"url": webapp_url})],
         [InlineKeyboardButton("⬅️ Volver al menú", callback_data="menu_main")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -222,13 +227,21 @@ async def show_episode_ad(update: Update, context: ContextTypes.DEFAULT_TYPE, ep
     query = update.callback_query
     user_id = update.effective_user.id
     
-    # Obtener configuración de anuncios
-    ad_url = await db.get_config("ad_url", "https://ejemplo.com")
+    # Construir título y URL con parámetros
+    episode_title = f"{show.name} - {episode.season_number}x{episode.episode_number:02d}"
+    if episode.title:
+        episode_title += f" - {episode.title}"
+    
+    title_encoded = urllib.parse.quote(episode_title)
+    poster_encoded = urllib.parse.quote(show.poster_url or "")
+    api_url_encoded = urllib.parse.quote(API_SERVER_URL)
+    
+    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={episode.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}&content_type=episode"
     
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     
     keyboard = [
-        [InlineKeyboardButton("📱 Ver anuncio", web_app={"url": ad_url})],
+        [InlineKeyboardButton("📱 Ver anuncio", web_app={"url": webapp_url})],
         [InlineKeyboardButton("⬅️ Volver a episodios", callback_data=f"season_{show.id}_{episode.season_number}")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
