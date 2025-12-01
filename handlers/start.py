@@ -108,9 +108,10 @@ async def send_episode_by_id(update, context, episode_id, user_id):
         episode = await db.get_episode_by_id(episode_id)
         
         if not episode:
-            await update.message.reply_text(
-                "❌ Episodio no encontrado.\n\n"
-                "Puede que haya sido eliminado o no esté disponible."
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="❌ Episodio no encontrado.\n\n"
+                     "Puede que haya sido eliminado o no esté disponible."
             )
             return
         
@@ -118,13 +119,17 @@ async def send_episode_by_id(update, context, episode_id, user_id):
         show = await db.get_tv_show_by_id(episode.tv_show_id)
         
         if not show:
-            await update.message.reply_text("❌ Serie no encontrada.")
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="❌ Serie no encontrada."
+            )
             return
             
     except Exception as e:
         print(f"Error buscando episodio: {e}")
-        await update.message.reply_text(
-            "❌ Error al buscar el episodio. Por favor intenta más tarde."
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="❌ Error al buscar el episodio. Por favor intenta más tarde."
         )
         return
     
@@ -161,10 +166,11 @@ async def send_episode_by_id(update, context, episode_id, user_id):
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        f"📺 <b>{episode_title}</b>\n\n"
-        f"Para ver este episodio, primero debes ver un anuncio corto.\n\n"
-        f"👇 Toca el botón de abajo para continuar:",
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"📺 <b>{episode_title}</b>\n\n"
+             f"Para ver este episodio, primero debes ver un anuncio corto.\n\n"
+             f"👇 Toca el botón de abajo para continuar:",
         reply_markup=reply_markup,
         parse_mode="HTML"
     )
