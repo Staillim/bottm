@@ -8,7 +8,7 @@ from handlers.menu import (
     main_menu, movies_menu, series_menu,
     show_seasons_menu, show_episodes_menu
 )
-from config.settings import CHANNEL_ID
+from config.settings import STORAGE_CHANNEL_ID
 import logging
 
 db = DatabaseManager()
@@ -144,7 +144,7 @@ async def send_movie_video(update: Update, context: ContextTypes.DEFAULT_TYPE, v
         # Copiar mensaje del canal al usuario
         await context.bot.copy_message(
             chat_id=user_id,
-            from_chat_id=CHANNEL_ID,
+            from_chat_id=STORAGE_CHANNEL_ID,
             message_id=video.message_id
         )
         
@@ -172,7 +172,7 @@ async def send_episode_video(update: Update, context: ContextTypes.DEFAULT_TYPE,
         # Copiar mensaje del canal al usuario
         await context.bot.copy_message(
             chat_id=user_id,
-            from_chat_id=CHANNEL_ID,
+            from_chat_id=STORAGE_CHANNEL_ID,
             message_id=episode.message_id
         )
         
