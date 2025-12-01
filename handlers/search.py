@@ -86,22 +86,20 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Video no encontrado.")
         return
 
-    # Crear token de anuncio
-    from config.settings import BOT_USERNAME, WEBAPP_URL, API_SERVER_URL
+    # Preparar URL de Mini App (sin token, solo con user_id y video_id)
+    from config.settings import WEBAPP_URL, API_SERVER_URL
     import urllib.parse
 
     print(f"🎬 Usuario {query.from_user.id} seleccionó video {video.id}: {video.title}")
-    token = await db.create_ad_token(query.from_user.id, video.id)
-    print(f"🔑 Token generado para Mini App: {token[:10]}...")
 
-    # Preparar parámetros para la Mini App
+    # Parámetros simples para la Mini App
     title_encoded = urllib.parse.quote(video.title)
     poster_encoded = urllib.parse.quote(video.poster_url or "https://via.placeholder.com/300x450?text=Sin+Poster")
     api_url_encoded = urllib.parse.quote(API_SERVER_URL)
 
-    webapp_url = f"{WEBAPP_URL}?token={token}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
+    webapp_url = f"{WEBAPP_URL}?user_id={query.from_user.id}&video_id={video.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
     
-    print(f"🌐 URL de Mini App generada (primeros 100 chars): {webapp_url[:100]}...")
+    print(f"🌐 URL de Mini App generada para user={query.from_user.id}, video={video.id}")
 
     # Enviar mensaje con botón de Mini App
     keyboard = [[

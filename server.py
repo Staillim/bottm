@@ -73,17 +73,17 @@ def serve_webapp():
 
 @app.route('/api/ad-completed', methods=['POST'])
 def ad_completed():
-    """Endpoint que se llama cuando el usuario completa el anuncio"""
+    """Endpoint que se llama cuando el usuario completa el anuncio (sin tokens, directo)"""
     try:
         data = request.json
-        token = data.get('token')
         user_id = data.get('user_id')
+        video_id = data.get('video_id')
 
-        print(f"📡 Recibida petición ad-completed: token={token[:10] if token else None}..., user_id={user_id}")
+        print(f"📡 Recibida petición ad-completed: user_id={user_id}, video_id={video_id}")
 
-        if not token:
-            print("❌ Token no proporcionado")
-            return jsonify({'success': False, 'error': 'Token no proporcionado'}), 400
+        if not user_id or not video_id:
+            print("❌ user_id o video_id no proporcionado")
+            return jsonify({'success': False, 'error': 'Datos incompletos'}), 400
 
         # Ejecutar código async en Flask
         loop = asyncio.new_event_loop()
@@ -94,34 +94,14 @@ def ad_completed():
             if db is None:
                 loop.run_until_complete(init_db())
 
-            # Validar token
-            ad_token = loop.run_until_complete(db.get_ad_token(token))
-
-            if not ad_token:
-                print(f"❌ Token inválido: {token[:10]}...")
-                return jsonify({'success': False, 'error': 'Token inválido'}), 404
-
-            if ad_token.completed:
-                print(f"⚠️ Token ya usado: {token[:10]}...")
-                return jsonify({'success': False, 'error': 'Token ya usado'}), 400
-
-            print(f"✅ Token válido para user_id={ad_token.user_id}, video_id={ad_token.video_id}")
-
-            # Marcar token como completado
-            success = loop.run_until_complete(db.complete_ad_token(token))
-
-            if not success:
-                print("❌ Error al completar token")
-                return jsonify({'success': False, 'error': 'Error al completar token'}), 500
-
             # Obtener información del video
-            video = loop.run_until_complete(db.get_video_by_id(ad_token.video_id))
+            video = loop.run_until_complete(db.get_video_by_id(video_id))
 
             if not video:
-                print(f"❌ Video no encontrado: {ad_token.video_id}")
+                print(f"❌ Video no encontrado: {video_id}")
                 return jsonify({'success': False, 'error': 'Video no encontrado'}), 404
 
-            print(f"🎬 Enviando video: {video.title}")
+            print(f"🎬 Enviando video: {video.title} a user_id={user_id}")
 
             # Enviar el video al usuario
             bot = Bot(token=BOT_TOKEN)
@@ -151,7 +131,7 @@ def ad_completed():
 
                     loop.run_until_complete(
                         bot.send_photo(
-                            chat_id=ad_token.user_id,
+                            chat_id=user_id,
                             photo=photo,
                             caption=caption,
                             parse_mode="HTML"
@@ -168,7 +148,7 @@ def ad_completed():
 
             loop.run_until_complete(
                 bot.send_video(
-                    chat_id=ad_token.user_id,
+                    chat_id=user_id,
                     video=video.file_id,
                     caption=caption_text,
                     parse_mode='Markdown'
@@ -179,7 +159,7 @@ def ad_completed():
             # Enviar mensaje de confirmación
             loop.run_until_complete(
                 bot.send_message(
-                    chat_id=ad_token.user_id,
+                    chat_id=user_id,
                     text="✅ ¡Disfruta tu película!\n\nUsa /buscar para encontrar más contenido."
                 )
             )

@@ -150,11 +150,13 @@
         
         // Obtener parámetros de la URL
         const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token');
+        const userId = urlParams.get('user_id');
+        const videoId = urlParams.get('video_id');
         const movieTitle = urlParams.get('title');
         const posterUrl = urlParams.get('poster');
         
-        console.log('🔑 Token recibido en Mini App:', token?.substring(0, 10) + '...');
+        console.log('👤 User ID:', userId);
+        console.log('🎬 Video ID:', videoId);
         console.log('🎬 Película:', movieTitle);
         
         // Mostrar información de la película
@@ -242,33 +244,20 @@
             document.getElementById('loading').style.display = 'block';
             
             try {
-                // Validar que tenemos user_id
-                const userId = tg.initDataUnsafe?.user?.id;
-                if (!userId) {
-                    console.error('❌ No se pudo obtener user_id');
-                    tg.showPopup({
-                        title: 'Error',
-                        message: 'No se pudo verificar tu identidad.',
-                        buttons: [{type: 'close'}]
-                    });
-                    setTimeout(() => tg.close(), 1000);
-                    return;
-                }
-                
                 // Obtener URL del servidor desde parámetros o usar default
                 const apiUrl = new URLSearchParams(window.location.search).get('api_url') || 'https://cinestelar-bot.onrender.com';
                 
-                console.log('📡 Notificando al servidor...', { token: token?.substring(0, 10) + '...', userId, apiUrl });
+                console.log('📡 Notificando al servidor...', { userId, videoId, apiUrl });
                 
-                // Notificar al servidor que el anuncio se completó
+                // Notificar al servidor que el anuncio se completó (sin token)
                 const response = await fetch(`${apiUrl}/api/ad-completed`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        token: token,
-                        user_id: userId
+                        user_id: userId,
+                        video_id: videoId
                     }),
                     mode: 'cors'
                 });
