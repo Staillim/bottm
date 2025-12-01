@@ -95,11 +95,12 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
     api_url_encoded = urllib.parse.quote(API_SERVER_URL)
     
     # Usar user_id y video_id directamente (sin tokens)
-    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video_msg_id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
+    # IMPORTANTE: Usar video.id (ID de base de datos), NO video_msg_id (ID de mensaje en canal)
+    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
     
     print(f"📱 Abriendo Mini App desde deep link:")
     print(f"   User: {user_id}")
-    print(f"   Video: {video_msg_id} ({video.title})")
+    print(f"   Video DB ID: {video.id} (Msg ID: {video_msg_id})")
     print(f"   URL: {webapp_url[:100]}...")
     
     # Enviar mensaje con botón de Mini App
