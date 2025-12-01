@@ -7,78 +7,93 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db = context.bot_data['db']
     
+    # DEBUG: Log para ver qué args llegan
+    print(f"🔍 /start llamado por user {user.id}")
+    print(f"🔍 context.args: {context.args}")
+    
     # Registrar o actualizar usuario
     db_user = await db.get_user(user.id)
     if not db_user:
         await db.add_user(user.id, user.username, user.first_name)
     
     # Verificar si viene desde un deep link (botón "Ver Ahora")
-    if context.args and context.args[0].startswith("video_"):
-        video_msg_id = int(context.args[0].split("_")[1])
+    if context.args and len(context.args) > 0:
+        arg = context.args[0]
+        print(f"🔍 Deep link detectado: {arg}")
         
-        # Verificar membresía primero
-        if not await is_user_member(user.id, context):
-            keyboard = [
-                [InlineKeyboardButton("✅ Unirse al Canal", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}")],
-                [InlineKeyboardButton("🔄 Verificar y Ver Video", callback_data=f"verify_video_{video_msg_id}")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+        if arg.startswith("video_"):
+            video_msg_id = int(arg.split("_")[1])
+            print(f"🎬 Procesando video con message_id: {video_msg_id}")
             
-            await update.message.reply_text(
-                f"⚠️ Primero debes unirte al canal para ver este video.\n\n"
-                f"Únete a {VERIFICATION_CHANNEL_USERNAME} y presiona verificar.",
-                reply_markup=reply_markup
-            )
+            # Verificar membresía primero
+            if not await is_user_member(user.id, context):
+                keyboard = [
+                    [InlineKeyboardButton("✅ Unirse al Canal", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}")],
+                    [InlineKeyboardButton("🔄 Verificar y Ver Video", callback_data=f"verify_video_{video_msg_id}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    f"⚠️ Primero debes unirte al canal para ver este video.\n\n"
+                    f"Únete a {VERIFICATION_CHANNEL_USERNAME} y presiona verificar.",
+                    reply_markup=reply_markup
+                )
+                return
+            
+            # Usuario verificado - buscar y enviar video
+            print(f"✅ Usuario verificado, enviando video...")
+            await send_video_by_message_id(update, context, video_msg_id, user.id)
             return
-        
-        # Usuario verificado - buscar y enviar video
-        await send_video_by_message_id(update, context, video_msg_id, user.id)
-        return
     
     # Verificar si viene desde un deep link de serie (botón "Ver Ahora" de serie)
-    if context.args and context.args[0].startswith("series_"):
-        series_id = int(context.args[0].split("_")[1])
+    if context.args and len(context.args) > 0:
+        arg = context.args[0]
         
-        # Verificar membresía primero
-        if not await is_user_member(user.id, context):
-            keyboard = [
-                [InlineKeyboardButton("✅ Unirse al Canal", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}")],
-                [InlineKeyboardButton("🔄 Verificar Membresía", callback_data="verify_membership")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+        if arg.startswith("series_"):
+            series_id = int(arg.split("_")[1])
+            print(f"📺 Procesando serie con ID: {series_id}")
             
-            await update.message.reply_text(
-                f"⚠️ Primero debes unirte al canal para ver esta serie.\n\n"
-                f"Únete a {VERIFICATION_CHANNEL_USERNAME} y presiona verificar.",
-                reply_markup=reply_markup
-            )
+            # Verificar membresía primero
+            if not await is_user_member(user.id, context):
+                keyboard = [
+                    [InlineKeyboardButton("✅ Unirse al Canal", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}")],
+                    [InlineKeyboardButton("🔄 Verificar Membresía", callback_data="verify_membership")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    f"⚠️ Primero debes unirte al canal para ver esta serie.\n\n"
+                    f"Únete a {VERIFICATION_CHANNEL_USERNAME} y presiona verificar.",
+                    reply_markup=reply_markup
+                )
+                return
+            
+            # Usuario verificado - actualizar verificación
+            await db.update_user_verification(user.id, True)
+            
+            # Mostrar la serie directamente
+            from handlers.callbacks import show_series_details
+            
+            # Crear un objeto falso de query para reutilizar la función
+            class FakeQuery:
+                def __init__(self, message, data):
+                    self.message = message
+                    self.data = data
+                    self.from_user = message.from_user
+                
+                async def answer(self):
+                    pass
+                
+                async def edit_message_text(self, text, **kwargs):
+                    await self.message.reply_text(text, **kwargs)
+            
+            fake_query = FakeQuery(update.message, f"series_{series_id}")
+            fake_update = Update(update.update_id, message=update.message)
+            fake_update.callback_query = fake_query
+            
+            print(f"✅ Usuario verificado, mostrando serie...")
+            await show_series_details(fake_update, context, series_id)
             return
-        
-        # Usuario verificado - actualizar verificación
-        await db.update_user_verification(user.id, True)
-        
-        # Mostrar la serie directamente
-        from handlers.callbacks import show_series_details
-        
-        # Crear un objeto falso de query para reutilizar la función
-        class FakeQuery:
-            def __init__(self, message, data):
-                self.message = message
-                self.data = data
-                self.from_user = message.from_user
-            
-            async def answer(self):
-                pass
-            
-            async def edit_message_text(self, text, **kwargs):
-                await self.message.reply_text(text, **kwargs)
-        
-        fake_query = FakeQuery(update.message, f"series_{series_id}")
-        fake_update = Update(update.update_id, message=update.message)
-        fake_update.callback_query = fake_query
-        
-        await show_series_details(fake_update, context, series_id)
-        return
     
     # Verificar membresía
     is_member = await is_user_member(user.id, context)
