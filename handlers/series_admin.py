@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from database.db_manager import DatabaseManager
 from utils.tmdb_api import TMDBApi
-from config.settings import STORAGE_CHANNEL_ID, ADMIN_IDS
+from config.settings import STORAGE_CHANNEL_ID, ADMIN_IDS, VERIFICATION_CHANNEL_ID
 import re
 import logging
 
@@ -188,6 +188,48 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
         seasons = await db.get_seasons_for_show(show_id)
         total_episodes = sum(count for _, count in seasons)
         
+        # Publicar anuncio en el canal de verificación
+        try:
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            
+            # Construir mensaje de anuncio
+            announcement = f"🆕 <b>Nueva Serie Disponible</b>\n\n"
+            announcement += f"📺 {show_name}\n"
+            announcement += f"📊 {total_episodes} episodio(s) disponibles\n"
+            announcement += f"🎬 {len(seasons)} temporada(s)\n\n"
+            
+            # Listar temporadas
+            for season_num, ep_count in sorted(seasons):
+                announcement += f"  • Temporada {season_num}: {ep_count} episodios\n"
+            
+            announcement += f"\n✨ Busca '<code>{show_name}</code>' en el bot para ver todos los episodios."
+            
+            # Botón para ir al bot
+            keyboard = [[InlineKeyboardButton("🔍 Buscar en el Bot", url=f"https://t.me/{context.bot.username}?start=serie_{show_id}")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Enviar con poster si existe
+            if show.poster_url:
+                await context.bot.send_photo(
+                    chat_id=VERIFICATION_CHANNEL_ID,
+                    photo=show.poster_url,
+                    caption=announcement,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=VERIFICATION_CHANNEL_ID,
+                    text=announcement,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+            
+            logger.info(f"📢 Post publicado en canal para: {show_name}")
+            
+        except Exception as e:
+            logger.error(f"Error publicando en canal: {e}")
+        
         status_msg = f"✅ Indexación completada:\n\n"
         status_msg += f"📺 <b>{show_name}</b>\n"
         status_msg += f"📹 {indexed_count} episodio(s) NUEVOS indexados\n"
@@ -196,6 +238,7 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
         status_msg += f"📊 Total en DB: {total_episodes} episodios\n"
         status_msg += f"🛑 Detenido tras {empty_count} mensajes vacíos\n"
         status_msg += f"📝 Último mensaje: #{last_indexed_message_id}\n\n"
+        status_msg += f"📢 Post publicado en el canal de verificación.\n\n"
         status_msg += f"Usa /start para buscar la serie."
         
         await update.message.reply_text(status_msg, parse_mode='HTML')
