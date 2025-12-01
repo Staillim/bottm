@@ -169,37 +169,21 @@
         
         // Callbacks del SDK de libtl.com - El SDK los invoca automáticamente
         window.adCompleted_10253964 = function() {
-            console.log('✅ Anuncio completado exitosamente (callback)');
+            console.log('✅ Anuncio completado exitosamente (callback automático)');
             adWasCompleted = true;
             onAdComplete();
         };
         
         window.adClosed_10253964 = function() {
-            console.log('❌ Anuncio cerrado (callback)');
-            const btn = document.getElementById('watchAdBtn');
-            
-            if (!adWasCompleted && adWasShown) {
-                // El anuncio se mostró pero no se completó automáticamente
-                // Cambiar el botón para que el usuario confirme manualmente
-                btn.disabled = false;
-                btn.textContent = '✅ Ya vi el anuncio completo';
-                btn.onclick = function() {
-                    console.log('Usuario confirmó que vio el anuncio');
-                    onAdComplete();
-                };
-            } else if (!adWasShown) {
-                // El anuncio nunca se mostró
-                btn.disabled = false;
-                btn.textContent = '▶️ Ver Anuncio';
-                tg.showAlert('⚠️ El anuncio no se cargó. Intenta de nuevo.');
-            }
+            console.log('ℹ️ Anuncio cerrado (callback)');
+            // No hacemos nada aquí, dejamos que el timeout maneje la lógica
         };
         
         window.adError_10253964 = function(error) {
             console.error('❌ Error en el anuncio:', error);
             const btn = document.getElementById('watchAdBtn');
             btn.disabled = false;
-            btn.textContent = '▶️ Ver Anuncio';
+            btn.textContent = '▶️ Reintentar Ver Anuncio';
             tg.showAlert('Error al cargar el anuncio. Por favor intenta de nuevo.');
         };
         
@@ -215,24 +199,29 @@
             
             try {
                 // Invocar el SDK - NO es async, solo inicia el anuncio
-                // Los callbacks se ejecutarán cuando el usuario complete/cierre el anuncio
                 if (typeof show_10253964 === 'function') {
                     show_10253964();
                     adWasShown = true;
                     
-                    // Si después de 3 segundos no hay respuesta del SDK, 
-                    // asumimos que el anuncio se está mostrando
+                    // Cambiar el texto inmediatamente después de invocar
                     setTimeout(function() {
-                        if (!adWasCompleted && adWasShown) {
-                            console.log('⏰ Timeout: Cambiando a confirmación manual');
+                        btn.textContent = '👀 Viendo anuncio...';
+                    }, 500);
+                    
+                    // Después de unos segundos, mostrar botón de confirmación manual
+                    setTimeout(function() {
+                        if (!adWasCompleted) {
+                            console.log('⏰ Habilitando confirmación manual');
                             btn.disabled = false;
-                            btn.textContent = '✅ Ya vi el anuncio completo';
+                            btn.textContent = '✅ Ya terminé de ver el anuncio';
                             btn.onclick = function() {
-                                console.log('Usuario confirmó que vio el anuncio (timeout)');
+                                console.log('Usuario confirmó manualmente');
+                                btn.disabled = true;
+                                btn.textContent = '⏳ Procesando...';
                                 onAdComplete();
                             };
                         }
-                    }, 3000);
+                    }, 5000); // 5 segundos para dar tiempo a ver el anuncio
                 } else {
                     throw new Error('SDK de anuncios no cargado');
                 }
