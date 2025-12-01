@@ -13,15 +13,19 @@ class DatabaseManager:
         if not DATABASE_URL:
             raise ValueError("DATABASE_URL no está configurada")
         
-        # Configurar connect_args solo para PostgreSQL
+        # Configurar para PostgreSQL con pgbouncer
         connect_args = {}
         if DATABASE_URL.startswith("postgresql"):
-            connect_args = {"statement_cache_size": 0}  # Deshabilitar cache de statements para pgbouncer
+            connect_args = {
+                "statement_cache_size": 0,  # Deshabilitar cache de statements para pgbouncer
+                "prepared_statement_cache_size": 0  # También deshabilitar prepared statements
+            }
         
         self.engine = create_async_engine(
             DATABASE_URL, 
             echo=False,
-            connect_args=connect_args
+            connect_args=connect_args,
+            pool_pre_ping=True  # Verificar conexiones antes de usarlas
         )
         self.async_session = sessionmaker(
             self.engine, class_=AsyncSession, expire_on_commit=False
