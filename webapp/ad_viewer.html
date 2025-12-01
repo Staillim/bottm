@@ -154,6 +154,9 @@
         const movieTitle = urlParams.get('title');
         const posterUrl = urlParams.get('poster');
         
+        console.log('🔑 Token recibido en Mini App:', token?.substring(0, 10) + '...');
+        console.log('🎬 Película:', movieTitle);
+        
         // Mostrar información de la película
         if (movieTitle) {
             document.getElementById('movieTitle').textContent = decodeURIComponent(movieTitle);

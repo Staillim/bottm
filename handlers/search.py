@@ -90,7 +90,9 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from config.settings import BOT_USERNAME, WEBAPP_URL, API_SERVER_URL
     import urllib.parse
 
+    print(f"🎬 Usuario {query.from_user.id} seleccionó video {video.id}: {video.title}")
     token = await db.create_ad_token(query.from_user.id, video.id)
+    print(f"🔑 Token generado para Mini App: {token[:10]}...")
 
     # Preparar parámetros para la Mini App
     title_encoded = urllib.parse.quote(video.title)
@@ -98,6 +100,8 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     api_url_encoded = urllib.parse.quote(API_SERVER_URL)
 
     webapp_url = f"{WEBAPP_URL}?token={token}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
+    
+    print(f"🌐 URL de Mini App generada (primeros 100 chars): {webapp_url[:100]}...")
 
     # Enviar mensaje con botón de Mini App
     keyboard = [[

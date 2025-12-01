@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, update
 from .models import Base, User, Video, Search, Favorite, AdToken
 from config.settings import DATABASE_URL
 import unicodedata
@@ -209,6 +209,18 @@ class DatabaseManager:
         from datetime import timedelta
         
         async with self.async_session() as session:
+            # Primero, invalidar tokens previos del mismo user_id + video_id que no estén completados
+            # Esto evita acumulación de tokens no usados
+            await session.execute(
+                update(AdToken)
+                .where(AdToken.user_id == user_id)
+                .where(AdToken.video_id == video_id)
+                .where(AdToken.completed == False)
+                .values(completed=True, completed_at=datetime.utcnow())
+            )
+            await session.commit()
+            
+            # Crear nuevo token
             token = secrets.token_urlsafe(32)
             
             # Token expira en 24 horas
@@ -223,6 +235,8 @@ class DatabaseManager:
             )
             session.add(ad_token)
             await session.commit()
+            
+            print(f"🔑 Nuevo token creado: {token[:10]}... para user_id={user_id}, video_id={video_id}")
             return token
     
     async def get_ad_token(self, token):
