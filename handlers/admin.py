@@ -128,8 +128,11 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def publish_to_verification_channel(context, movie_data, storage_msg_id):
-    """Publica película en canal de verificación con poster y botón"""
+    """Publica película en canal de verificación con poster y botón de Mini App"""
     try:
+        from config.settings import WEBAPP_URL, API_SERVER_URL
+        import urllib.parse
+        
         # Descargar poster
         poster_url = movie_data.get("poster_url")
         if not poster_url:
@@ -156,9 +159,17 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id):
             f"{overview}"
         )
         
-        # Botón para ver en el bot
+        # Preparar parámetros para la Mini App (sin user_id, se obtiene automáticamente)
+        title_encoded = urllib.parse.quote(title)
+        poster_encoded = urllib.parse.quote(poster_url)
+        api_url_encoded = urllib.parse.quote(API_SERVER_URL)
+        
+        # NOTA: user_id se omite en canal público, la Mini App lo obtendrá de Telegram
+        webapp_url = f"{WEBAPP_URL}?video_id={storage_msg_id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
+        
+        # Botón con Mini App
         keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("▶️ Ver Ahora", url=f"https://t.me/{context.bot.username}?start=video_{storage_msg_id}")
+            InlineKeyboardButton("▶️ Ver Ahora", web_app={"url": webapp_url})
         ]])
         
         # Publicar en canal
