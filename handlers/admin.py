@@ -148,15 +148,12 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def publish_to_verification_channel(context, movie_data, storage_msg_id):
-    """Publica película en canal de verificación con poster y botón de Mini App"""
+    """Publica película en canal de verificación con poster y botón de deep link"""
     try:
         print(f"🔍 publish_to_verification_channel llamada con:")
         print(f"   - movie_data keys: {list(movie_data.keys())}")
         print(f"   - storage_msg_id: {storage_msg_id}")
         print(f"   - VERIFICATION_CHANNEL_ID: {VERIFICATION_CHANNEL_ID}")
-        
-        from config.settings import WEBAPP_URL, API_SERVER_URL
-        import urllib.parse
         
         # Descargar poster
         poster_url = movie_data.get("poster_url")
@@ -188,23 +185,14 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id):
             f"{overview}"
         )
         
-        # Preparar parámetros para la Mini App (sin user_id, se obtiene automáticamente)
-        title_encoded = urllib.parse.quote(title)
-        poster_encoded = urllib.parse.quote(poster_url)
-        api_url_encoded = urllib.parse.quote(API_SERVER_URL)
-        
-        # NOTA: user_id se omite en canal público, la Mini App lo obtendrá de Telegram
-        webapp_url = f"{WEBAPP_URL}?video_id={storage_msg_id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
-        
-        print(f"🔗 webapp_url generada: {webapp_url[:100]}...")
-        
-        # Botón con Mini App
+        # NOTA: En canales públicos NO se puede usar web_app (da Button_type_invalid)
+        # Usamos deep linking normal: usuario hace clic → se abre bot → handler /start procesa
         keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("▶️ Ver Ahora", web_app={"url": webapp_url})
+            InlineKeyboardButton("▶️ Ver Ahora", url=f"https://t.me/{context.bot.username}?start=video_{storage_msg_id}")
         ]])
         
-        print(f"📤 Enviando mensaje al canal {VERIFICATION_CHANNEL_ID}...")
-        # Publicar en canal
+        print(f"🔗 Deep link generado: https://t.me/{context.bot.username}?start=video_{storage_msg_id}")
+                # Publicar en canal
         msg = await context.bot.send_photo(
             chat_id=VERIFICATION_CHANNEL_ID,
             photo=photo,
