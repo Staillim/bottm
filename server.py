@@ -177,16 +177,27 @@ def ad_completed():
         user_id = data.get('user_id')
         video_id = data.get('video_id')
 
-        print(f"📡 Recibida petición ad-completed: user_id={user_id}, video_id={video_id}")
+        print(f"📡 Recibida petición ad-completed: user_id={user_id} (type={type(user_id)}), video_id={video_id} (type={type(video_id)})")
 
         if not user_id or not video_id:
             print("❌ user_id o video_id no proporcionado")
             return jsonify({'success': False, 'error': 'Datos incompletos'}), 400
 
+        # Convertir a int si vienen como string
+        try:
+            user_id = int(user_id)
+            video_id = int(video_id)
+            print(f"✅ Convertidos a int: user_id={user_id}, video_id={video_id}")
+        except ValueError as e:
+            print(f"❌ Error convirtiendo IDs: {e}")
+            return jsonify({'success': False, 'error': 'IDs inválidos'}), 400
+
         # Iniciar proceso en background
-        threading.Thread(target=process_video_delivery, args=(user_id, video_id)).start()
+        print(f"🚀 Lanzando thread para procesar video...")
+        threading.Thread(target=process_video_delivery, args=(user_id, video_id), daemon=True).start()
         
         # Responder inmediatamente
+        print(f"✅ Respondiendo OK al cliente")
         return jsonify({'success': True, 'message': 'Procesando envío de video'})
 
     except Exception as e:
