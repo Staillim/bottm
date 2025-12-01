@@ -45,11 +45,15 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Si tiene video, procesarlo
             if msg.video:
                 title = msg.caption or f"Video {msg_id}"
+                print(f"\n{'='*60}")
+                print(f"🎬 Procesando: {title}")
+                print(f"   Message ID: {msg_id}")
                 
                 # Verificar si ya está indexado
                 try:
                     existing = await db.get_video_by_message_id(msg_id)
                     if existing:
+                        print(f"⏭️  Ya indexado, saltando...")
                         skipped += 1
                         # Guardar progreso
                         await db.set_config('last_indexed_message', msg_id + 1)
@@ -59,8 +63,16 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
                 
                 # Buscar en TMDB
+                print(f"🔍 Buscando en TMDB: {title}")
                 tmdb = TMDBApi()
                 movie_data = tmdb.search_movie(title)
+                
+                if movie_data:
+                    print(f"✅ TMDB encontrado: {movie_data.get('title')} ({movie_data.get('year')})")
+                    print(f"   - TMDB ID: {movie_data.get('tmdb_id')}")
+                    print(f"   - Poster: {movie_data.get('poster_url', 'No poster')[:50]}...")
+                else:
+                    print(f"❌ No se encontró en TMDB")
                 
                 # Preparar datos para guardar
                 video_data = {
