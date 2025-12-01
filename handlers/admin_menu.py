@@ -169,10 +169,10 @@ async def admin_add_episode(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         message_text += f"\n\n"
     
     message_text += f"📝 <b>Instrucciones:</b>\n"
-    message_text += f"1️⃣ Sube el video al canal de almacenamiento con caption <code>S#x#</code>\n"
+    message_text += f"1️⃣ Sube el video al canal de almacenamiento con caption <code>#x#</code>\n"
     message_text += f"2️⃣ Reenvía ese mensaje aquí\n"
     message_text += f"3️⃣ El bot lo indexará automáticamente\n\n"
-    message_text += f"Ejemplo: <code>S1x5</code>, <code>S2x1</code>"
+    message_text += f"Ejemplo: <code>1x5</code>, <code>2x1</code>"
     
     keyboard = [[InlineKeyboardButton("❌ Cancelar", callback_data=f"admin_show_{show_id}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -214,16 +214,16 @@ async def process_new_episode(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ El mensaje debe contener un video.")
         return True
     
-    # Buscar patrón S#x# en el caption
+    # Buscar patrón #x# en el caption (puede estar en cualquier parte)
     import re
     text_to_search = update.message.caption if update.message.caption else ""
-    pattern = r'[Ss](\d+)[xX](\d+)'
+    pattern = r'(\d+)[xX](\d+)'
     match = re.search(pattern, text_to_search)
     
     if not match:
         await update.message.reply_text(
-            "❌ No se encontró el formato S#x# en el caption del video.\n\n"
-            "Ejemplo: <code>S1x5</code>, <code>S2x1</code>",
+            "❌ No se encontró el formato #x# en el caption del video.\n\n"
+            "Ejemplo: <code>1x5</code>, <code>2x1</code>",
             parse_mode='HTML'
         )
         return True

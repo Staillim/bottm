@@ -36,14 +36,12 @@ async def auto_index_episodes(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         else:
             # No hay episodios previos, pedir el primero
-            await update.message.reply_text(
-                "⚠️ Por favor, reenvía el PRIMER episodio de la serie del canal\n"
-                "(ej: el mensaje con S1x1)\n\n"
-                "Buscaré automáticamente los siguientes episodios.",
-                parse_mode='HTML'
-            )
-        
-        # Guardar contexto para cuando reenvíe el mensaje
+        await update.message.reply_text(
+            "⚠️ Por favor, reenvía el PRIMER episodio de la serie del canal\n"
+            "(ej: el mensaje con 1x1 en el caption)\n\n"
+            "Buscaré automáticamente los siguientes episodios.",
+            parse_mode='HTML'
+        )        # Guardar contexto para cuando reenvíe el mensaje
         context.user_data['auto_index_show_id'] = show.id
         context.user_data['auto_index_show_name'] = show.name
         context.user_data['waiting_for_first_episode'] = True
@@ -84,7 +82,7 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     
     # Buscar episodios hacia adelante desde ese mensaje
-    pattern = r'[Ss](\d+)[xX](\d+)'
+    pattern = r'(\d+)[xX](\d+)'
     indexed_count = 0
     skipped_count = 0
     search_range = 200  # Buscar hasta 200 mensajes hacia adelante
@@ -186,8 +184,8 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
         else:
             await update.message.reply_text(
-                f"❌ No se encontraron episodios con formato S#x#\n\n"
-                f"Asegúrate de que los mensajes tengan el formato correcto en el caption.",
+                f"❌ No se encontraron episodios con formato #x#\n\n"
+                f"Asegúrate de que los mensajes tengan el formato correcto en el caption (ej: 1x1, 2x5).",
                 parse_mode='HTML'
             )
     
@@ -309,7 +307,7 @@ async def index_series_command(update: Update, context: ContextTypes.DEFAULT_TYP
 async def index_episode_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Maneja respuestas a mensajes del canal para indexar episodios
-    Formato: S#x# (ej: S1x1, S2x10)
+    Formato: #x# (ej: 1x1, 2x10)
     """
     user_id = update.effective_user.id
     
@@ -330,10 +328,10 @@ async def index_episode_reply(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
     
-    # Parsear formato S#x#
+    # Parsear formato #x# (puede estar en cualquier parte del texto)
     text = update.message.text.strip()
-    pattern = r'^[Ss](\d+)[xX](\d+)$'
-    match = re.match(pattern, text)
+    pattern = r'(\d+)[xX](\d+)'
+    match = re.search(pattern, text)
     
     if not match:
         return  # No es un formato válido, ignorar

@@ -95,8 +95,9 @@ def main():
             # Si no es auto-index, procesar como mensaje normal
             await handle_text_message(update, context)
     
+    # Handler para respuestas con formato #x# (puede contener texto adicional)
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.Regex(r'^[Ss]\d+[xX]\d+$'),
+        filters.TEXT & ~filters.COMMAND & filters.Regex(r'\d+[xX]\d+'),
         index_episode_reply
     ))
     application.add_handler(MessageHandler(
