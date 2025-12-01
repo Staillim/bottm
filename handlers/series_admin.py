@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from database.db_manager import DatabaseManager
 from utils.tmdb_api import TMDBApi
-from config.settings import CHANNEL_ID, ADMIN_IDS
+from config.settings import STORAGE_CHANNEL_ID, ADMIN_IDS
 import re
 import logging
 
