@@ -133,13 +133,13 @@
         
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p style="margin-top: 10px;">Enviando película...</p>
+            <p style="margin-top: 10px;" id="loadingText">Enviando película...</p>
         </div>
         
         <div class="success-message" id="successMessage">
             <div class="checkmark">✅</div>
             <div style="font-size: 18px; font-weight: bold;">¡Anuncio completado!</div>
-            <div style="margin-top: 10px;">Enviando tu película...</div>
+            <div style="margin-top: 10px;" id="successText">Enviando tu película...</div>
         </div>
     </div>
 
@@ -164,12 +164,14 @@
         const videoId = urlParams.get('video_id');
         const movieTitle = urlParams.get('title');
         const posterUrl = urlParams.get('poster');
+        const contentType = urlParams.get('content_type') || 'movie'; // 'movie' o 'episode'
         
         console.log('👤 User ID (Telegram):', tgUserId);
         console.log('👤 User ID (URL param):', paramUserId);
         console.log('👤 User ID (final):', userId);
         console.log('🎬 Video ID:', videoId);
         console.log('🎬 Película:', movieTitle);
+        console.log('📺 Content Type:', contentType);
         
         // Verificar datos críticos INMEDIATAMENTE
         if (!userId || !videoId) {
@@ -181,13 +183,19 @@
             }, () => tg.close());
         }
         
-        // Mostrar información de la película
+        // Mostrar información de la película/episodio
         if (movieTitle) {
             document.getElementById('movieTitle').textContent = decodeURIComponent(movieTitle);
         }
         
         if (posterUrl) {
             document.getElementById('moviePoster').src = decodeURIComponent(posterUrl);
+        }
+        
+        // Actualizar mensaje según el tipo de contenido
+        const adMessageElement = document.querySelector('.ad-message');
+        if (contentType === 'episode') {
+            adMessageElement.textContent = '📺 Para ver este episodio, primero debes ver un anuncio corto';
         }
         
         // Variable para controlar si el anuncio se completó
@@ -256,6 +264,12 @@
             document.getElementById('watchAdBtn').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
             
+            // Actualizar texto de loading según el tipo
+            const loadingText = document.getElementById('loadingText');
+            if (contentType === 'episode') {
+                loadingText.textContent = 'Enviando episodio...';
+            }
+            
             // Verificar datos antes de enviar
             if (!userId || !videoId) {
                 tg.showPopup({
@@ -280,7 +294,8 @@
                     },
                     body: JSON.stringify({
                         user_id: userId,
-                        video_id: videoId
+                        video_id: videoId,
+                        content_type: contentType
                     }),
                     mode: 'cors'
                 });
@@ -300,6 +315,12 @@
                     // Mostrar mensaje de éxito
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('successMessage').style.display = 'block';
+                    
+                    // Actualizar texto según el tipo
+                    const successText = document.getElementById('successText');
+                    if (contentType === 'episode') {
+                        successText.textContent = 'Enviando tu episodio...';
+                    }
                     
                     // Cerrar la Mini App después de 1 segundo
                     setTimeout(() => {
