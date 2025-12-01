@@ -90,19 +90,6 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Ocurrió un error al realizar la búsqueda. Por favor intenta de nuevo.")
         except:
             pass
-            InlineKeyboardButton(
-                f"📹 {idx}. {video.title[:45]}..." if len(video.title) > 45 else f"📹 {idx}. {video.title}",
-                callback_data=f"video_{video.id}"
-            )
-        ])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        text,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
 
 async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
