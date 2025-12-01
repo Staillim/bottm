@@ -71,14 +71,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Usuario verificado - actualizar verificación
             await db.update_user_verification(user.id, True)
             
-            # Mostrar la serie directamente
-            from handlers.callbacks import show_series_details
+            # Mostrar la serie directamente usando el mismo flujo que los callbacks
+            from handlers.menu import show_seasons_menu
             
-            # Crear un objeto falso de query para reutilizar la función
+            # Crear un callback query falso
             class FakeQuery:
-                def __init__(self, message, data):
+                def __init__(self, message):
                     self.message = message
-                    self.data = data
                     self.from_user = message.from_user
                 
                 async def answer(self):
@@ -87,12 +86,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 async def edit_message_text(self, text, **kwargs):
                     await self.message.reply_text(text, **kwargs)
             
-            fake_query = FakeQuery(update.message, f"series_{series_id}")
-            fake_update = Update(update.update_id, message=update.message)
-            fake_update.callback_query = fake_query
+            # Crear update con callback query falso
+            fake_query = FakeQuery(update.message)
+            fake_update = type('obj', (object,), {
+                'callback_query': fake_query,
+                'effective_user': user
+            })()
             
-            print(f"✅ Usuario verificado, mostrando serie...")
-            await show_series_details(fake_update, context, series_id)
+            print(f"✅ Usuario verificado, mostrando temporadas de la serie...")
+            await show_seasons_menu(fake_update, context, series_id)
             return
     
     # Verificar membresía
