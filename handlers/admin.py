@@ -86,6 +86,7 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Si encontró en TMDB, agregar metadata
                 if movie_data:
                     video_data.update({
+                        "title": movie_data.get("title"), # Actualizar título con el oficial de TMDB
                         "tmdb_id": movie_data.get("tmdb_id"),
                         "original_title": movie_data.get("original_title"),
                         "year": movie_data.get("year"),
