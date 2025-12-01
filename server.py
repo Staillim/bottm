@@ -134,19 +134,37 @@ def process_video_delivery(user_id, video_id):
                 print(f"⚠️ Error enviando poster: {e}")
 
         # Enviar video
+        print(f"🎥 Intentando enviar video file_id: {video.file_id}")
         caption_text = f"📹 *{video.title}*"
         if video.description:
             caption_text += f"\n\n{video.description}"
 
-        loop.run_until_complete(
-            bot.send_video(
-                chat_id=user_id,
-                video=video.file_id,
-                caption=caption_text,
-                parse_mode='Markdown'
+        try:
+            loop.run_until_complete(
+                bot.send_video(
+                    chat_id=user_id,
+                    video=video.file_id,
+                    caption=caption_text,
+                    parse_mode='Markdown',
+                    read_timeout=60,
+                    write_timeout=60,
+                    connect_timeout=60
+                )
             )
-        )
-        print("🎥 Video enviado")
+            print("✅ Video enviado exitosamente")
+        except Exception as e:
+            print(f"❌ Error enviando video: {e}")
+            # Intentar enviar mensaje de error al usuario
+            try:
+                loop.run_until_complete(
+                    bot.send_message(
+                        chat_id=user_id,
+                        text="❌ Hubo un error al enviar el archivo de video. Por favor intenta de nuevo más tarde."
+                    )
+                )
+            except:
+                pass
+            return # Salir si falla el video
 
         # Enviar mensaje de confirmación
         loop.run_until_complete(
