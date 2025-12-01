@@ -56,7 +56,6 @@ async def run_migration():
         print(f"⚠️ Error en migración (puede ser normal si ya existe): {e}")
 
 async def init_db():
-async def init_db():
     """Inicializar base de datos de forma asíncrona"""
     global db
     if db is None:
