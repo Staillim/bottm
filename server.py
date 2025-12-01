@@ -71,20 +71,6 @@ def serve_webapp():
     """Sirve la Mini App de anuncios (versión simplificada)"""
     return send_file('webapp/ad_viewer_simple.html')
 
-@app.route('/api/ad-completed', methods=['POST'])
-def ad_completed():
-    """Endpoint que se llama cuando el usuario completa el anuncio (sin tokens, directo)"""
-    try:
-        data = request.json
-        user_id = data.get('user_id')
-        video_id = data.get('video_id')
-
-        print(f"📡 Recibida petición ad-completed: user_id={user_id}, video_id={video_id}")
-
-        if not user_id or not video_id:
-            print("❌ user_id o video_id no proporcionado")
-            return jsonify({'success': False, 'error': 'Datos incompletos'}), 400
-
 def process_video_delivery(user_id, video_id):
     """Procesa el envío del video en segundo plano"""
     print(f"🔄 Iniciando proceso de envío en background para user_id={user_id}")
