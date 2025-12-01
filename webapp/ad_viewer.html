@@ -243,18 +243,19 @@
                 const userId = tg.initDataUnsafe?.user?.id;
                 if (!userId) {
                     console.error('❌ No se pudo obtener user_id');
-                    tg.showAlert('Error: No se pudo verificar tu identidad. Intenta nuevamente.');
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('watchAdBtn').style.display = 'block';
-                    document.getElementById('watchAdBtn').disabled = false;
-                    document.getElementById('watchAdBtn').textContent = '▶️ Ver Anuncio';
+                    tg.showPopup({
+                        title: 'Error',
+                        message: 'No se pudo verificar tu identidad.',
+                        buttons: [{type: 'close'}]
+                    });
+                    setTimeout(() => tg.close(), 1000);
                     return;
                 }
                 
                 // Obtener URL del servidor desde parámetros o usar default
                 const apiUrl = new URLSearchParams(window.location.search).get('api_url') || 'https://cinestelar-bot.onrender.com';
                 
-                console.log('📡 Notificando al servidor...', { token: token?.substring(0, 10) + '...', userId });
+                console.log('📡 Notificando al servidor...', { token: token?.substring(0, 10) + '...', userId, apiUrl });
                 
                 // Notificar al servidor que el anuncio se completó
                 const response = await fetch(`${apiUrl}/api/ad-completed`, {
@@ -265,32 +266,50 @@
                     body: JSON.stringify({
                         token: token,
                         user_id: userId
-                    })
+                    }),
+                    mode: 'cors'
                 });
                 
+                console.log('📡 Respuesta del servidor:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('❌ Error del servidor:', errorText);
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('📡 Data recibida:', data);
                 
                 if (data.success) {
                     // Mostrar mensaje de éxito
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('successMessage').style.display = 'block';
                     
-                    // Cerrar la Mini App después de 2 segundos
+                    // Cerrar la Mini App después de 1 segundo
                     setTimeout(() => {
+                        console.log('✅ Cerrando Mini App');
                         tg.close();
-                    }, 2000);
+                    }, 1000);
                 } else {
                     throw new Error(data.error || 'Error desconocido');
                 }
             } catch (error) {
                 console.error('❌ Error al notificar:', error);
-                tg.showAlert('Error al procesar tu solicitud. Por favor contacta al administrador.');
                 
-                // Restaurar UI para permitir reintentar
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('watchAdBtn').style.display = 'block';
-                document.getElementById('watchAdBtn').disabled = false;
-                document.getElementById('watchAdBtn').textContent = '▶️ Reintentar';
+                // Mostrar popup de error y cerrar
+                tg.showPopup({
+                    title: 'Error',
+                    message: 'Hubo un problema al procesar tu solicitud. El video será enviado pronto.',
+                    buttons: [{type: 'close'}]
+                }, () => {
+                    tg.close();
+                });
+                
+                // Cerrar automáticamente después de 3 segundos si el usuario no cierra el popup
+                setTimeout(() => {
+                    tg.close();
+                }, 3000);
             }
         }
         
