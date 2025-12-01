@@ -86,13 +86,21 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                     # Publicar en canal de verificación
                     try:
+                        print(f"📢 Intentando publicar en canal: {title}")
                         channel_msg = await publish_to_verification_channel(
                             context, movie_data, msg_id
                         )
                         if channel_msg:
                             video_data["channel_message_id"] = channel_msg.message_id
+                            print(f"✅ Publicado en canal con message_id: {channel_msg.message_id}")
+                        else:
+                            print(f"⚠️ No se pudo publicar en canal (función retornó None)")
                     except Exception as e:
-                        print(f"Error publicando en canal: {e}")
+                        print(f"❌ Error publicando en canal: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f"⚠️ No se encontró metadata en TMDB para: {title}")
                 
                 # Agregar video a la base de datos
                 await db.add_video(**video_data)
@@ -130,14 +138,21 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def publish_to_verification_channel(context, movie_data, storage_msg_id):
     """Publica película en canal de verificación con poster y botón de Mini App"""
     try:
+        print(f"🔍 publish_to_verification_channel llamada con:")
+        print(f"   - movie_data keys: {list(movie_data.keys())}")
+        print(f"   - storage_msg_id: {storage_msg_id}")
+        print(f"   - VERIFICATION_CHANNEL_ID: {VERIFICATION_CHANNEL_ID}")
+        
         from config.settings import WEBAPP_URL, API_SERVER_URL
         import urllib.parse
         
         # Descargar poster
         poster_url = movie_data.get("poster_url")
         if not poster_url:
+            print(f"⚠️ No hay poster_url, abortando publicación")
             return None
         
+        print(f"📥 Descargando poster desde: {poster_url}")
         response = req.get(poster_url, timeout=10)
         response.raise_for_status()
         photo = io.BytesIO(response.content)
@@ -148,6 +163,8 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id):
         year = movie_data.get("year", "N/A")
         rating = movie_data.get("vote_average", 0)
         overview = movie_data.get("overview", "")
+        
+        print(f"📝 Preparando mensaje: {title} ({year})")
         
         # Limitar descripción a 200 caracteres
         if len(overview) > 200:
@@ -167,11 +184,14 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id):
         # NOTA: user_id se omite en canal público, la Mini App lo obtendrá de Telegram
         webapp_url = f"{WEBAPP_URL}?video_id={storage_msg_id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
         
+        print(f"🔗 webapp_url generada: {webapp_url[:100]}...")
+        
         # Botón con Mini App
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton("▶️ Ver Ahora", web_app={"url": webapp_url})
         ]])
         
+        print(f"📤 Enviando mensaje al canal {VERIFICATION_CHANNEL_ID}...")
         # Publicar en canal
         msg = await context.bot.send_photo(
             chat_id=VERIFICATION_CHANNEL_ID,
@@ -181,10 +201,13 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id):
             reply_markup=keyboard
         )
         
+        print(f"✅ Mensaje enviado exitosamente, message_id: {msg.message_id}")
         return msg
         
     except Exception as e:
-        print(f"Error en publish_to_verification_channel: {e}")
+        print(f"❌ Error en publish_to_verification_channel: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
