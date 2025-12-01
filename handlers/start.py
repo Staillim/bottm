@@ -84,24 +84,29 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
         )
         return
     
-    # Crear token de anuncio (igual que en search.py)
+    # Sistema nuevo: user_id + video_id (sin tokens)
     from config.settings import WEBAPP_URL, API_SERVER_URL
+    from telegram import WebAppInfo
     import urllib.parse
-    
-    token = await db.create_ad_token(user_id, video.id, video_msg_id)
     
     # Preparar parámetros para la Mini App
     title_encoded = urllib.parse.quote(video.title)
     poster_encoded = urllib.parse.quote(video.poster_url or "https://via.placeholder.com/300x450?text=Sin+Poster")
     api_url_encoded = urllib.parse.quote(API_SERVER_URL)
     
-    webapp_url = f"{WEBAPP_URL}?token={token}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
+    # Usar user_id y video_id directamente (sin tokens)
+    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video_msg_id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
+    
+    print(f"📱 Abriendo Mini App desde deep link:")
+    print(f"   User: {user_id}")
+    print(f"   Video: {video_msg_id} ({video.title})")
+    print(f"   URL: {webapp_url[:100]}...")
     
     # Enviar mensaje con botón de Mini App
     keyboard = [[
         InlineKeyboardButton(
             "📺 Ver Anuncio para Continuar",
-            web_app={"url": webapp_url}
+            web_app=WebAppInfo(url=webapp_url)
         )
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
