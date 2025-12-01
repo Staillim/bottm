@@ -9,15 +9,53 @@ import threading
 from database.db_manager import DatabaseManager
 from telegram import Bot
 from config.settings import BOT_TOKEN, STORAGE_CHANNEL_ID, FLASK_PORT
+from sqlalchemy import text
 import os
 import sys
 
 app = Flask(__name__)
 CORS(app)
-
 # Inicializar base de datos
 db = None
 
+async def run_migration():
+    """Ejecuta la migración de base de datos si es necesaria"""
+    try:
+        async with db.engine.begin() as conn:
+            # Verificar si las columnas ya existen
+            result = await conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'ad_tokens' 
+                AND column_name IN ('expires_at', 'ip_address')
+            """))
+            
+            existing_columns = [row[0] for row in result]
+            
+            # Agregar expires_at si no existe
+            if 'expires_at' not in existing_columns:
+                print("🔧 Agregando columna expires_at...")
+                await conn.execute(text("""
+                    ALTER TABLE ad_tokens 
+                    ADD COLUMN expires_at TIMESTAMP WITHOUT TIME ZONE
+                """))
+                print("✅ Columna expires_at agregada")
+            
+            # Agregar ip_address si no existe
+            if 'ip_address' not in existing_columns:
+                print("🔧 Agregando columna ip_address...")
+                await conn.execute(text("""
+                    ALTER TABLE ad_tokens 
+                    ADD COLUMN ip_address VARCHAR(50)
+                """))
+                print("✅ Columna ip_address agregada")
+        
+        if 'expires_at' not in existing_columns or 'ip_address' not in existing_columns:
+            print("✅ Migración completada")
+    except Exception as e:
+        print(f"⚠️ Error en migración (puede ser normal si ya existe): {e}")
+
+async def init_db():
 async def init_db():
     """Inicializar base de datos de forma asíncrona"""
     global db
@@ -25,6 +63,9 @@ async def init_db():
         db = DatabaseManager()
         await db.init_db()
         print("✅ Base de datos inicializada")
+        
+        # Ejecutar migración automática
+        await run_migration()
 
 @app.route('/ad_viewer.html')
 def serve_webapp():
