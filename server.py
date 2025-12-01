@@ -234,9 +234,12 @@ def run_telegram_bot():
     try:
         print("🤖 Iniciando Bot de Telegram...")
         import subprocess
-        result = subprocess.run([sys.executable, "main.py"], capture_output=True, text=True)
+        # Usar Popen o run sin capture_output para ver logs en tiempo real
+        # sys.stdout y sys.stderr se heredan por defecto
+        result = subprocess.run([sys.executable, "main.py"], text=True)
+        
         if result.returncode != 0:
-            print(f"❌ Error en bot: {result.stderr}")
+            print(f"❌ Error en bot (código {result.returncode})")
         else:
             print("✅ Bot finalizado correctamente")
     except Exception as e:
