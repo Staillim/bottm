@@ -163,34 +163,83 @@
             document.getElementById('moviePoster').src = decodeURIComponent(posterUrl);
         }
         
+        // Variable para controlar si el anuncio se completó
+        let adWasCompleted = false;
+        
+        // Callbacks del SDK de libtl.com - El SDK los invoca automáticamente
+        window.adCompleted_10253964 = function() {
+            console.log('✅ Anuncio completado exitosamente');
+            adWasCompleted = true;
+            onAdComplete();
+        };
+        
+        window.adClosed_10253964 = function() {
+            console.log('❌ Anuncio cerrado');
+            const btn = document.getElementById('watchAdBtn');
+            
+            if (!adWasCompleted) {
+                // Usuario cerró el anuncio sin completarlo
+                btn.disabled = false;
+                btn.textContent = '▶️ Ver Anuncio';
+                tg.showAlert('⚠️ Debes ver el anuncio completo para recibir la película.');
+            }
+        };
+        
+        window.adError_10253964 = function(error) {
+            console.error('❌ Error en el anuncio:', error);
+            const btn = document.getElementById('watchAdBtn');
+            btn.disabled = false;
+            btn.textContent = '▶️ Ver Anuncio';
+            tg.showAlert('Error al cargar el anuncio. Por favor intenta de nuevo.');
+        };
+        
         // Función para mostrar el anuncio
-        async function showAd() {
+        function showAd() {
             const btn = document.getElementById('watchAdBtn');
             btn.disabled = true;
             btn.textContent = '⏳ Cargando anuncio...';
             
+            // Resetear flag
+            adWasCompleted = false;
+            
             try {
-                // Mostrar anuncio recompensado intersticial
-                await show_10253964();
-                
-                // El anuncio se completó
-                onAdComplete();
+                // Invocar el SDK - NO es async, solo inicia el anuncio
+                // Los callbacks se ejecutarán cuando el usuario complete/cierre el anuncio
+                if (typeof show_10253964 === 'function') {
+                    show_10253964();
+                } else {
+                    throw new Error('SDK de anuncios no cargado');
+                }
             } catch (error) {
-                console.error('Error al mostrar anuncio:', error);
-                tg.showAlert('Error al cargar el anuncio. Intenta nuevamente.');
+                console.error('Error al invocar SDK:', error);
+                tg.showAlert('Error al cargar el anuncio. Verifica tu conexión.');
                 btn.disabled = false;
                 btn.textContent = '▶️ Ver Anuncio';
             }
         }
         
-        // Función que se ejecuta cuando el anuncio se completa
+        // Función que se ejecuta cuando el anuncio se completa REALMENTE
         async function onAdComplete() {
             document.getElementById('watchAdBtn').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
             
             try {
+                // Validar que tenemos user_id
+                const userId = tg.initDataUnsafe?.user?.id;
+                if (!userId) {
+                    console.error('❌ No se pudo obtener user_id');
+                    tg.showAlert('Error: No se pudo verificar tu identidad. Intenta nuevamente.');
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('watchAdBtn').style.display = 'block';
+                    document.getElementById('watchAdBtn').disabled = false;
+                    document.getElementById('watchAdBtn').textContent = '▶️ Ver Anuncio';
+                    return;
+                }
+                
                 // Obtener URL del servidor desde parámetros o usar default
                 const apiUrl = new URLSearchParams(window.location.search).get('api_url') || 'https://cinestelar-bot.onrender.com';
+                
+                console.log('📡 Notificando al servidor...', { token: token?.substring(0, 10) + '...', userId });
                 
                 // Notificar al servidor que el anuncio se completó
                 const response = await fetch(`${apiUrl}/api/ad-completed`, {
@@ -200,7 +249,7 @@
                     },
                     body: JSON.stringify({
                         token: token,
-                        user_id: tg.initDataUnsafe?.user?.id
+                        user_id: userId
                     })
                 });
                 
@@ -219,8 +268,14 @@
                     throw new Error(data.error || 'Error desconocido');
                 }
             } catch (error) {
-                console.error('Error al notificar:', error);
-                tg.showAlert('Error al procesar. Contacta al administrador.');
+                console.error('❌ Error al notificar:', error);
+                tg.showAlert('Error al procesar tu solicitud. Por favor contacta al administrador.');
+                
+                // Restaurar UI para permitir reintentar
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('watchAdBtn').style.display = 'block';
+                document.getElementById('watchAdBtn').disabled = false;
+                document.getElementById('watchAdBtn').textContent = '▶️ Reintentar';
             }
         }
         

@@ -5,6 +5,7 @@ from .models import Base, User, Video, Search, Favorite, AdToken
 from config.settings import DATABASE_URL
 import unicodedata
 import secrets
+import asyncio
 from datetime import datetime
 
 class DatabaseManager:
@@ -131,32 +132,60 @@ class DatabaseManager:
     
     async def search_videos(self, query, limit=10):
         async with self.async_session() as session:
+            if not query or query.strip() == "":
+                # Sin query, retornar videos recientes
+                result = await session.execute(
+                    select(Video).order_by(Video.added_at.desc()).limit(limit)
+                )
+                return result.scalars().all()
+            
             # Normalizar la búsqueda
             normalized_query = self.normalize_text(query)
-            search_term = f"%{normalized_query}%"
+            search_terms = normalized_query.split()  # Separar palabras para mejor búsqueda
             
-            # Buscar en todos los videos
-            result = await session.execute(select(Video))
+            # Buscar solo primeros 500 videos (optimización)
+            result = await session.execute(
+                select(Video).order_by(Video.added_at.desc()).limit(500)
+            )
             all_videos = result.scalars().all()
             
-            # Filtrar manualmente con normalización
+            # Filtrar y rankear resultados
             matching_videos = []
             for video in all_videos:
-                # Normalizar título, descripción y tags
-                norm_title = self.normalize_text(video.title)
-                norm_desc = self.normalize_text(video.description)
-                norm_tags = self.normalize_text(video.tags)
+                # Normalizar campos
+                norm_title = self.normalize_text(video.title or "")
+                norm_desc = self.normalize_text(video.description or "")
+                norm_tags = self.normalize_text(video.tags or "")
+                norm_original = self.normalize_text(video.original_title or "")
                 
-                # Verificar si la query está en alguno de los campos
-                if (normalized_query in norm_title or 
-                    normalized_query in norm_desc or 
-                    normalized_query in norm_tags):
-                    matching_videos.append(video)
+                # Calcular score de relevancia
+                score = 0
+                
+                # Búsqueda exacta en título vale más
+                if normalized_query in norm_title:
+                    score += 10
+                
+                # Título original también importante
+                if normalized_query in norm_original:
+                    score += 8
                     
-                    if len(matching_videos) >= limit:
-                        break
+                # Términos individuales en título
+                for term in search_terms:
+                    if term in norm_title:
+                        score += 3
+                    if term in norm_original:
+                        score += 2
+                    if term in norm_desc:
+                        score += 1
+                    if term in norm_tags:
+                        score += 1
+                
+                if score > 0:
+                    matching_videos.append((score, video))
             
-            return matching_videos
+            # Ordenar por score y retornar top resultados
+            matching_videos.sort(reverse=True, key=lambda x: x[0])
+            return [video for score, video in matching_videos[:limit]]
     
     async def get_video_by_id(self, video_id):
         async with self.async_session() as session:
@@ -173,25 +202,40 @@ class DatabaseManager:
     
     async def create_ad_token(self, user_id, video_id, message_id=None):
         """Crea un token único para ver un anuncio antes de recibir el video"""
+        from datetime import timedelta
+        
         async with self.async_session() as session:
             token = secrets.token_urlsafe(32)
+            
+            # Token expira en 24 horas
+            expires_at = datetime.utcnow() + timedelta(hours=24)
+            
             ad_token = AdToken(
                 token=token,
                 user_id=user_id,
                 video_id=video_id,
-                message_id=message_id
+                message_id=message_id,
+                expires_at=expires_at
             )
             session.add(ad_token)
             await session.commit()
             return token
     
     async def get_ad_token(self, token):
-        """Obtiene información del token de anuncio"""
+        """Obtiene información del token de anuncio si es válido y no expiró"""
         async with self.async_session() as session:
             result = await session.execute(
                 select(AdToken).where(AdToken.token == token)
             )
-            return result.scalar_one_or_none()
+            ad_token = result.scalar_one_or_none()
+            
+            # Verificar si el token expiró
+            if ad_token and ad_token.expires_at:
+                if datetime.utcnow() > ad_token.expires_at:
+                    print(f"⚠️ Token expirado: {token[:10]}...")
+                    return None
+            
+            return ad_token
     
     async def complete_ad_token(self, token):
         """Marca un token como completado cuando el usuario ve el anuncio"""

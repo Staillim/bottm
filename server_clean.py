@@ -98,7 +98,7 @@ def ad_completed():
 
             if not ad_token:
                 print(f"❌ Token inválido: {token[:10]}...")
-                return jsonify({'success': False, 'error': 'Token inválido'}), 404
+                return jsonify({'success': False, 'error': 'Token inválido o expirado'}), 404
 
             if ad_token.completed:
                 print(f"⚠️ Token ya usado: {token[:10]}...")

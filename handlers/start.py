@@ -67,16 +67,21 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
     """Envía Mini App con anuncio cuando viene desde canal"""
     db = context.bot_data['db']
     
-    # Buscar video por message_id
-    videos = await db.search_videos("", limit=10000)
-    video = None
-    for v in videos:
-        if v.message_id == video_msg_id:
-            video = v
-            break
-    
-    if not video:
-        await update.message.reply_text("❌ Video no encontrado.")
+    try:
+        # Usar método existente optimizado
+        video = await db.get_video_by_message_id(video_msg_id)
+        
+        if not video:
+            await update.message.reply_text(
+                "❌ Video no encontrado.\n\n"
+                "Puede que haya sido eliminado o no esté disponible."
+            )
+            return
+    except Exception as e:
+        print(f"Error buscando video: {e}")
+        await update.message.reply_text(
+            "❌ Error al buscar el video. Por favor intenta más tarde."
+        )
         return
     
     # Crear token de anuncio (igual que en search.py)

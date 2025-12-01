@@ -68,3 +68,5 @@ class AdToken(Base):
     completed = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
     completed_at = Column(DateTime)
+    expires_at = Column(DateTime)  # Tokens expiran después de 24 horas
+    ip_address = Column(String(50))  # Para detectar uso abusivo

@@ -8,17 +8,27 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Verificar membresía
     if not await is_user_member(user.id, context):
+        keyboard = [[InlineKeyboardButton(
+            "✅ Unirme al Canal",
+            url=f"https://t.me/{context.bot_data.get('channel_username', 'CineStellar_S').strip('@')}"
+        )]]
         await update.message.reply_text(
-            "❌ Debes estar verificado para usar este comando.\n"
-            "Usa /start para verificarte."
+            "❌ Debes estar verificado para usar este comando.\n\n"
+            "Únete al canal y luego usa /start para verificarte.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
     
     # Obtener término de búsqueda
     if not context.args:
         await update.message.reply_text(
-            "❓ Uso: /buscar <término de búsqueda>\n"
-            "Ejemplo: /buscar tutorial python"
+            "🔍 *Uso:* `/buscar <término>`\n\n"
+            "*Ejemplos:*\n"
+            "• `/buscar Avengers`\n"
+            "• `/buscar Thor 2022`\n"
+            "• `/buscar accion`\n\n"
+            "💡 *Tip:* Busca por título, año o género",
+            parse_mode='Markdown'
         )
         return
     
@@ -39,13 +49,17 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Crear botones con resultados
     keyboard = []
-    text = f"🔍 Resultados para: *{query}*\n\n"
+    text = f"🔍 *Resultados para:* `{query}`\n\n"
     
     for idx, video in enumerate(videos, 1):
-        text += f"{idx}. {video.title}\n"
+        # Agregar rating si existe
+        rating = f"⭐ {video.vote_average/10:.1f}" if video.vote_average else ""
+        year = f"({video.year})" if video.year else ""
+        
+        text += f"{idx}. *{video.title}* {year} {rating}\n"
         keyboard.append([
             InlineKeyboardButton(
-                f"📹 {idx}. {video.title[:50]}...",
+                f"📹 {idx}. {video.title[:45]}..." if len(video.title) > 45 else f"📹 {idx}. {video.title}",
                 callback_data=f"video_{video.id}"
             )
         ])
@@ -88,16 +102,31 @@ async def video_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Enviar mensaje con botón de Mini App
     keyboard = [[
         InlineKeyboardButton(
-            "📺 Ver Anuncio para Continuar",
+            "📺 Ver Anuncio (Recompensado)",
             web_app={"url": webapp_url}
         )
     ]]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Crear mensaje atractivo
+    message_text = f"🎬 <b>{video.title}</b>"
+    if video.year:
+        message_text += f" ({video.year})"
+    if video.vote_average:
+        message_text += f"\n⭐ Calificación: {video.vote_average/10:.1f}/10"
+    if video.runtime:
+        message_text += f"\n⏱️ Duración: {video.runtime} min"
+    if video.genres:
+        message_text += f"\n🎭 Género: {video.genres}"
+    
+    message_text += (
+        f"\n\n💰 <b>¡Video con anuncio recompensado!</b>"
+        f"\n\n📺 Mira un breve anuncio para desbloquear esta película."
+        f"\n\n👇 Toca el botón para continuar:"
+    )
 
     await query.edit_message_text(
-        f"🎬 <b>{video.title}</b>\n\n"
-        f"Para ver esta película, primero debes ver un anuncio corto.\n\n"
-        f"👇 Toca el botón de abajo para continuar:",
+        message_text,
         reply_markup=reply_markup,
         parse_mode="HTML"
     )
