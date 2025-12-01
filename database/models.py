@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, BigInteger, ForeignKey, Date
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, BigInteger, ForeignKey, Date, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 
@@ -52,7 +52,7 @@ class TvShow(Base):
     overview = Column(Text)
     poster_url = Column(Text)
     backdrop_url = Column(Text)
-    vote_average = Column(Integer)
+    vote_average = Column(Float)
     genres = Column(Text)
     number_of_seasons = Column(Integer)
     status = Column(String(50))

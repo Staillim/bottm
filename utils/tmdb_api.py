@@ -182,11 +182,14 @@ class TMDBApi:
     
     def _format_tv_data(self, show):
         """Formatea los datos de la serie"""
+        year_str = show.get("first_air_date", "")[:4] if show.get("first_air_date") else None
+        year = int(year_str) if year_str and year_str.isdigit() else None
+        
         return {
             "tmdb_id": show.get("id"),
             "name": show.get("name", "Sin título"),
             "original_name": show.get("original_name", ""),
-            "year": show.get("first_air_date", "")[:4] if show.get("first_air_date") else "N/A",
+            "year": year,
             "overview": show.get("overview", "Sin descripción disponible."),
             "poster_url": f"{self.IMAGE_BASE_URL}{show['poster_path']}" if show.get("poster_path") else None,
             "backdrop_url": f"{self.IMAGE_BASE_URL}{show['backdrop_path']}" if show.get("backdrop_path") else None,
@@ -208,11 +211,14 @@ class TMDBApi:
             response.raise_for_status()
             show = response.json()
             
+            year_str = show.get("first_air_date", "")[:4] if show.get("first_air_date") else None
+            year = int(year_str) if year_str and year_str.isdigit() else None
+            
             return {
                 "tmdb_id": show.get("id"),
                 "name": show.get("name", "Sin título"),
                 "original_name": show.get("original_name", ""),
-                "year": show.get("first_air_date", "")[:4] if show.get("first_air_date") else "N/A",
+                "year": year,
                 "overview": show.get("overview", "Sin descripción disponible."),
                 "poster_url": f"{self.IMAGE_BASE_URL}{show['poster_path']}" if show.get("poster_path") else None,
                 "backdrop_url": f"{self.IMAGE_BASE_URL}{show['backdrop_path']}" if show.get("backdrop_path") else None,

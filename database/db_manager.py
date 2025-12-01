@@ -6,7 +6,10 @@ from config.settings import DATABASE_URL
 import unicodedata
 import secrets
 import asyncio
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     def __init__(self):
@@ -352,7 +355,7 @@ class DatabaseManager:
                 await session.refresh(show)
                 return show
             except Exception as e:
-                print(f"❌ Error al agregar serie: {e}")
+                logger.error(f"Error al agregar serie: {e}", exc_info=True)
                 await session.rollback()
                 return None
     
