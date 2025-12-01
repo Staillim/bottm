@@ -35,6 +35,51 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_video_by_message_id(update, context, video_msg_id, user.id)
         return
     
+    # Verificar si viene desde un deep link de serie (botón "Ver Ahora" de serie)
+    if context.args and context.args[0].startswith("series_"):
+        series_id = int(context.args[0].split("_")[1])
+        
+        # Verificar membresía primero
+        if not await is_user_member(user.id, context):
+            keyboard = [
+                [InlineKeyboardButton("✅ Unirse al Canal", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}")],
+                [InlineKeyboardButton("🔄 Verificar Membresía", callback_data="verify_membership")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                f"⚠️ Primero debes unirte al canal para ver esta serie.\n\n"
+                f"Únete a {VERIFICATION_CHANNEL_USERNAME} y presiona verificar.",
+                reply_markup=reply_markup
+            )
+            return
+        
+        # Usuario verificado - actualizar verificación
+        await db.update_user_verification(user.id, True)
+        
+        # Mostrar la serie directamente
+        from handlers.callbacks import show_series_details
+        
+        # Crear un objeto falso de query para reutilizar la función
+        class FakeQuery:
+            def __init__(self, message, data):
+                self.message = message
+                self.data = data
+                self.from_user = message.from_user
+            
+            async def answer(self):
+                pass
+            
+            async def edit_message_text(self, text, **kwargs):
+                await self.message.reply_text(text, **kwargs)
+        
+        fake_query = FakeQuery(update.message, f"series_{series_id}")
+        fake_update = Update(update.update_id, message=update.message)
+        fake_update.callback_query = fake_query
+        
+        await show_series_details(fake_update, context, series_id)
+        return
+    
     # Verificar membresía
     is_member = await is_user_member(user.id, context)
     

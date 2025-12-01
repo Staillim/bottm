@@ -168,21 +168,29 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                     f"📺 {show.name} ({show.year})\n"
                     f"⭐️ Rating: {show.vote_average}/10\n"
                     f"📊 {indexed_count} episodios disponibles\n\n"
-                    f"Usa el bot para ver los episodios!"
+                    f"Usa el botón de abajo para ver todos los episodios!"
                 )
+                
+                # Crear botón con deep link
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+                keyboard = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("▶️ Ver Ahora", url=f"https://t.me/{context.bot.username}?start=series_{show.id}")
+                ]])
                 
                 if show.poster_url:
                     await context.bot.send_photo(
                         chat_id=VERIFICATION_CHANNEL_ID,
                         photo=show.poster_url,
                         caption=announcement_text,
-                        parse_mode='HTML'
+                        parse_mode='HTML',
+                        reply_markup=keyboard
                     )
                 else:
                     await context.bot.send_message(
                         chat_id=VERIFICATION_CHANNEL_ID,
                         text=announcement_text,
-                        parse_mode='HTML'
+                        parse_mode='HTML',
+                        reply_markup=keyboard
                     )
                     
             except Exception as e:
