@@ -133,7 +133,7 @@
         
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p style="margin-top: 10px;">Verificando anuncio...</p>
+            <p style="margin-top: 10px;">Enviando película...</p>
         </div>
         
         <div class="success-message" id="successMessage">
@@ -220,7 +220,8 @@
             // Intentar mostrar anuncio (opcional, sin bloquear)
             try {
                 if (typeof show_10253964 === 'function') {
-                    show_10253964().catch(e => console.log('Ad error:', e));
+                    // Llamada simple sin catch por si no es promesa
+                    show_10253964();
                 }
             } catch (error) {
                 console.log('Error SDK (ignorado):', error);
