@@ -153,11 +153,6 @@ async def admin_add_episode(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if all_episodes:
         last_episode = max(all_episodes, key=lambda ep: (ep.season_number, ep.episode_number))
     
-    # Guardar en contexto para auto-indexación
-    context.user_data['auto_index_show_id'] = show_id
-    context.user_data['auto_index_show_name'] = show.name
-    context.user_data['waiting_for_first_episode'] = True
-    
     message_text = f"➕ <b>Agregar Nuevos Episodios</b>\n\n"
     message_text += f"📺 Serie: <b>{show.name}</b>\n\n"
     
@@ -168,14 +163,17 @@ async def admin_add_episode(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             message_text += f" - {last_episode.title}"
         message_text += f"\n\n"
     
-    message_text += f"📝 <b>Instrucciones:</b>\n"
-    message_text += f"1️⃣ Sube los videos al canal de almacenamiento con caption <code>#x#</code>\n"
-    message_text += f"2️⃣ Reenvía el PRIMER episodio nuevo aquí\n"
-    message_text += f"3️⃣ El bot escaneará automáticamente hasta encontrar todos los episodios\n"
-    message_text += f"4️⃣ Se detendrá tras 5 mensajes vacíos\n\n"
-    message_text += f"Ejemplo: <code>1x5</code>, <code>2x1</code> o <code>Loki 1x5</code>"
+    message_text += f"🔄 <b>Escaneo Automático</b>\n\n"
+    message_text += f"El bot escaneará el canal de almacenamiento buscando episodios con:\n"
+    message_text += f"• Nombre de la serie: <code>{show.name}</code>\n"
+    message_text += f"• Formato en caption: <code>#x#</code> (ej: 1x1, 2x5, Loki 1x5)\n"
+    message_text += f"• Se detendrá tras 5 mensajes sin coincidencias\n\n"
+    message_text += f"⏳ Presiona continuar para iniciar..."
     
-    keyboard = [[InlineKeyboardButton("❌ Cancelar", callback_data=f"admin_show_{show_id}")]]
+    keyboard = [
+        [InlineKeyboardButton("✅ Continuar", callback_data=f"admin_auto_index_{show_id}")],
+        [InlineKeyboardButton("❌ Cancelar", callback_data=f"admin_show_{show_id}")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.edit_message_text(
@@ -324,6 +322,20 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     elif data.startswith("admin_add_episode_"):
         show_id = int(data.split("_")[3])
         await admin_add_episode(update, context, show_id)
+    
+    elif data.startswith("admin_auto_index_"):
+        show_id = int(data.split("_")[3])
+        await query.answer()
+        
+        # Obtener la serie
+        show = await db.get_tv_show_by_id(show_id)
+        if not show:
+            await query.edit_message_text("❌ Serie no encontrada.")
+            return
+        
+        # Importar y ejecutar auto_index_episodes
+        from handlers.series_admin import auto_index_episodes
+        await auto_index_episodes(update, context, show)
     
     elif data == "admin_stats":
         await query.answer()

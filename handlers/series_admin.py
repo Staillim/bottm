@@ -15,249 +15,196 @@ logger = logging.getLogger(__name__)
 
 async def auto_index_episodes(update: Update, context: ContextTypes.DEFAULT_TYPE, show):
     """
-    Busca automáticamente mensajes en el canal con formato S#x# y los indexa
-    Solo busca a partir del último mensaje indexado para evitar duplicados
+    Busca automáticamente mensajes en el canal con formato #x# y los indexa
+    Inicia desde el último mensaje indexado guardado en la base de datos
     """
     try:
-        # Verificar si ya hay episodios indexados para esta serie
-        existing_episodes = await db.get_episodes_by_show(show.id)
+        # Obtener el último mensaje indexado desde la base de datos
+        last_indexed_str = await db.get_config('last_indexed_message', '0')
+        start_message_id = int(last_indexed_str) + 1  # Comenzar desde el siguiente
         
-        if existing_episodes:
-            # Hay episodios previos, buscar solo nuevos
-            # Encontrar el message_id más alto (el último indexado)
-            last_message_id = max(ep.message_id for ep in existing_episodes)
-            
-            await update.message.reply_text(
-                f"⚠️ Ya hay {len(existing_episodes)} episodio(s) indexado(s).\n\n"
-                f"Para indexar MÁS episodios, reenvía el PRIMER mensaje NUEVO\n"
-                f"(debe ser posterior al último ya indexado)\n\n"
-                f"O usa /terminar_indexacion si ya terminaste.",
+        # Determinar si es un callback o comando
+        if update.callback_query:
+            chat_id = update.effective_chat.id
+            message = await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🔍 Buscando episodios de <b>{show.name}</b> en el canal...\n"
+                     f"📍 Iniciando desde mensaje #{start_message_id}\n\n"
+                     f"⏳ Esto puede tomar unos momentos...",
                 parse_mode='HTML'
             )
         else:
-            # No hay episodios previos, pedir el primero
-            await update.message.reply_text(
-                "⚠️ Por favor, reenvía el PRIMER episodio de la serie del canal\n"
-                "(ej: el mensaje con 1x1 en el caption)\n\n"
-                "Buscaré automáticamente los siguientes episodios.",
+            chat_id = update.effective_chat.id
+            message = await update.message.reply_text(
+                f"🔍 Buscando episodios de <b>{show.name}</b> en el canal...\n"
+                f"📍 Iniciando desde mensaje #{start_message_id}\n\n"
+                f"⏳ Esto puede tomar unos momentos...",
                 parse_mode='HTML'
             )
         
-        # Guardar contexto para cuando reenvíe el mensaje
-        context.user_data['auto_index_show_id'] = show.id
-        context.user_data['auto_index_show_name'] = show.name
-        context.user_data['waiting_for_first_episode'] = True
+        # Iniciar búsqueda automática
+        await scan_channel_for_episodes(update, context, show.id, show.name, start_message_id, chat_id)
         
         return 0
             
     except Exception as e:
         logger.error(f"Error en auto_index_episodes: {e}")
+        if update.callback_query:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"❌ Error: {e}"
+            )
+        else:
+            await update.message.reply_text(f"❌ Error: {e}")
         return 0
 
-async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAULT_TYPE, 
+                                    show_id: int, show_name: str, start_message_id: int, chat_id: int):
     """
-    Procesa la indexación automática desde un mensaje reenviado
+    Escanea el canal buscando episodios de la serie
     """
-    if not context.user_data.get('waiting_for_first_episode'):
-        return False
-    
-    # Verificar que sea un mensaje reenviado del canal
-    if not update.message.forward_from_chat:
-        await update.message.reply_text("❌ Debes reenviar un mensaje del canal de almacenamiento.")
-        return True
-    
-    show_id = context.user_data.get('auto_index_show_id')
-    show_name = context.user_data.get('auto_index_show_name')
-    
-    if not show_id:
-        await update.message.reply_text("❌ Error: No hay serie en proceso de indexación.")
-        return True
-    
-    # Obtener ID del mensaje reenviado
-    start_message_id = update.message.forward_from_message_id
-    channel_id = update.message.forward_from_chat.id
-    
-    await update.message.reply_text(
-        f"🔍 Buscando episodios desde el mensaje #{start_message_id}...\n"
-        f"Solo indexaré episodios que NO estén ya en la base de datos.",
-        parse_mode='HTML'
-    )
-    
-    # Buscar episodios hacia adelante desde ese mensaje
-    pattern = r'(\d+)[xX](\d+)'
+    pattern = re.compile(r'(\d+)[xX](\d+)')
     indexed_count = 0
-    skipped_count = 0
-    empty_count = 0  # Contador de mensajes vacíos consecutivos
-    max_empty = 5  # Detenerse después de 5 mensajes vacíos
-    last_indexed_message_id = start_message_id - 1  # Para guardar el último mensaje procesado
+    empty_count = 0
+    MAX_EMPTY = 5
+    current_message_id = start_message_id
+    last_indexed_message_id = start_message_id - 1
     
-    show = await db.get_tv_show_by_id(show_id)
-    
-    offset = 0
-    while empty_count < max_empty:
-        try:
-            msg_id = start_message_id + offset
-            offset += 1
-            
-            # Intentar obtener el mensaje
+    try:
+        while empty_count < MAX_EMPTY:
             try:
-                msg = await context.bot.forward_message(
-                    chat_id=update.effective_user.id,
-                    from_chat_id=channel_id,
-                    message_id=msg_id
+                # Intentar obtener el mensaje del canal
+                message = await context.bot.forward_message(
+                    chat_id=update.effective_chat.id,
+                    from_chat_id=STORAGE_CHANNEL_ID,
+                    message_id=current_message_id
                 )
                 
                 # Eliminar el mensaje reenviado inmediatamente
-                await msg.delete()
+                await message.delete()
                 
-            except Exception:
-                # Mensaje no existe o no es accesible - contar como vacío
-                empty_count += 1
-                continue
-            
-            # Buscar patrón #x# en el caption
-            text_to_search = msg.caption if msg.caption else (msg.text if msg.text else "")
-            
-            match = re.search(pattern, text_to_search)
-            if match and msg.video:
-                season_number = int(match.group(1))
-                episode_number = int(match.group(2))
-                
-                # Resetear contador de vacíos - encontramos algo válido
-                empty_count = 0
-                last_indexed_message_id = msg_id
-                
-                # IMPORTANTE: Verificar si ya existe para evitar duplicados
-                existing = await db.get_episode(show_id, season_number, episode_number)
-                if existing:
-                    skipped_count += 1
-                    logger.info(f"⏭️ Saltando {season_number}x{episode_number} - ya existe")
+                # Verificar si el mensaje tiene video
+                if not message.video:
+                    empty_count += 1
+                    current_message_id += 1
                     continue
                 
-                # Buscar info en TMDB
-                season_details = tmdb.get_season_details(show.tmdb_id, season_number)
-                episode_info = None
-                if season_details and season_details.get('episodes'):
-                    for ep in season_details['episodes']:
-                        if ep['episode_number'] == episode_number:
-                            episode_info = ep
-                            break
+                # Verificar si el caption contiene el nombre de la serie
+                caption = message.caption or ""
                 
-                # Guardar episodio
-                episode = await db.add_episode(
+                # Buscar el nombre de la serie en el caption (case insensitive)
+                if show_name.lower() not in caption.lower():
+                    empty_count += 1
+                    current_message_id += 1
+                    continue
+                
+                # Buscar patrón #x# en el caption
+                match = pattern.search(caption)
+                
+                if not match:
+                    empty_count += 1
+                    current_message_id += 1
+                    continue
+                
+                # Resetear contador de vacíos
+                empty_count = 0
+                
+                # Extraer temporada y episodio
+                season_num = int(match.group(1))
+                episode_num = int(match.group(2))
+                
+                # Extraer título del episodio (texto después del patrón)
+                title_match = re.search(r'\d+[xX]\d+\s*[-–—]?\s*(.+)', caption)
+                episode_title = title_match.group(1).strip() if title_match else f"Episodio {episode_num}"
+                
+                # Guardar en la base de datos
+                await db.add_episode(
                     tv_show_id=show_id,
-                    file_id=msg.video.file_id,
-                    message_id=msg_id,
-                    season_number=season_number,
-                    episode_number=episode_number,
-                    title=episode_info.get('name') if episode_info else None,
-                    overview=episode_info.get('overview') if episode_info else None,
-                    air_date=episode_info.get('air_date') if episode_info else None,
-                    runtime=episode_info.get('runtime') if episode_info else None,
-                    still_path=episode_info.get('still_path') if episode_info else None,
-                    channel_message_id=msg_id
+                    season_number=season_num,
+                    episode_number=episode_num,
+                    file_id=message.video.file_id,
+                    message_id=current_message_id,
+                    title=episode_title
                 )
                 
-                if episode:
-                    indexed_count += 1
-                    if indexed_count % 5 == 0:
-                        await update.message.reply_text(f"📹 {indexed_count} episodios indexados...")
-            else:
-                # Mensaje sin patrón o sin video - contar como vacío
+                indexed_count += 1
+                last_indexed_message_id = current_message_id
+                
+                # Actualizar progreso cada 5 episodios
+                if indexed_count % 5 == 0:
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"📊 Progreso: {indexed_count} episodios indexados...",
+                        parse_mode='HTML'
+                    )
+                
+            except Exception as e:
+                # Si no se puede obtener el mensaje (probablemente no existe)
                 empty_count += 1
+            
+            current_message_id += 1
         
-        except Exception as e:
-            logger.error(f"Error procesando mensaje {msg_id}: {e}")
-            empty_count += 1
-            continue
-    
-    # Guardar el último mensaje indexado en la base de datos
-    if last_indexed_message_id >= start_message_id:
-        try:
-            await db.set_config('last_indexed_message', str(last_indexed_message_id))
-            logger.info(f"📝 Último mensaje indexado guardado: {last_indexed_message_id}")
-        except Exception as e:
-            logger.error(f"Error guardando último mensaje: {e}")
-    
-    # Limpiar contexto
-    context.user_data.pop('waiting_for_first_episode', None)
-    context.user_data.pop('auto_index_show_id', None)
-    context.user_data.pop('auto_index_show_name', None)
-    
-    if indexed_count > 0:
-        seasons = await db.get_seasons_for_show(show_id)
-        total_episodes = sum(count for _, count in seasons)
+        # Guardar el último mensaje procesado
+        await db.set_config('last_indexed_message', str(last_indexed_message_id))
         
-        # Publicar anuncio en el canal de verificación
-        try:
-            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-            
-            # Construir mensaje de anuncio
-            announcement = f"🆕 <b>Nueva Serie Disponible</b>\n\n"
-            announcement += f"📺 {show_name}\n"
-            announcement += f"📊 {total_episodes} episodio(s) disponibles\n"
-            announcement += f"🎬 {len(seasons)} temporada(s)\n\n"
-            
-            # Listar temporadas
-            for season_num, ep_count in sorted(seasons):
-                announcement += f"  • Temporada {season_num}: {ep_count} episodios\n"
-            
-            announcement += f"\n✨ Busca '<code>{show_name}</code>' en el bot para ver todos los episodios."
-            
-            # Botón para ir al bot
-            keyboard = [[InlineKeyboardButton("🔍 Buscar en el Bot", url=f"https://t.me/{context.bot.username}?start=serie_{show_id}")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            # Enviar con poster si existe
-            if show.poster_url:
-                await context.bot.send_photo(
-                    chat_id=VERIFICATION_CHANNEL_ID,
-                    photo=show.poster_url,
-                    caption=announcement,
-                    parse_mode='HTML',
-                    reply_markup=reply_markup
-                )
-            else:
-                await context.bot.send_message(
-                    chat_id=VERIFICATION_CHANNEL_ID,
-                    text=announcement,
-                    parse_mode='HTML',
-                    reply_markup=reply_markup
-                )
-            
-            logger.info(f"📢 Post publicado en canal para: {show_name}")
-            
-        except Exception as e:
-            logger.error(f"Error publicando en canal: {e}")
-        
-        status_msg = f"✅ Indexación completada:\n\n"
-        status_msg += f"📺 <b>{show_name}</b>\n"
-        status_msg += f"📹 {indexed_count} episodio(s) NUEVOS indexados\n"
-        if skipped_count > 0:
-            status_msg += f"⏭️ {skipped_count} ya existían (saltados)\n"
-        status_msg += f"📊 Total en DB: {total_episodes} episodios\n"
-        status_msg += f"🛑 Detenido tras {empty_count} mensajes vacíos\n"
-        status_msg += f"📝 Último mensaje: #{last_indexed_message_id}\n\n"
-        status_msg += f"📢 Post publicado en el canal de verificación.\n\n"
-        status_msg += f"Usa /start para buscar la serie."
-        
-        await update.message.reply_text(status_msg, parse_mode='HTML')
-    else:
-        if skipped_count > 0:
-            await update.message.reply_text(
-                f"ℹ️ No hay episodios nuevos.\n\n"
-                f"⏭️ {skipped_count} episodio(s) ya estaban indexados.\n\n"
-                f"Todo está al día! ✅",
+        if indexed_count > 0:
+            # Enviar resumen
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"✅ <b>Indexación completada!</b>\n\n"
+                     f"📺 Serie: {show_name}\n"
+                     f"📊 Episodios indexados: {indexed_count}\n"
+                     f"💾 Último mensaje procesado: #{last_indexed_message_id}",
                 parse_mode='HTML'
             )
+            
+            # Obtener información de la serie para el anuncio
+            show = await db.get_tv_show_by_id(show_id)
+            
+            # Publicar en el canal de verificación
+            try:
+                announcement_text = (
+                    f"🆕 <b>Nueva Serie Disponible</b>\n\n"
+                    f"📺 {show.name} ({show.year})\n"
+                    f"⭐️ Rating: {show.vote_average}/10\n"
+                    f"📊 {indexed_count} episodios disponibles\n\n"
+                    f"Usa el bot para ver los episodios!"
+                )
+                
+                if show.poster_url:
+                    await context.bot.send_photo(
+                        chat_id=VERIFICATION_CHANNEL_ID,
+                        photo=show.poster_url,
+                        caption=announcement_text,
+                        parse_mode='HTML'
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=VERIFICATION_CHANNEL_ID,
+                        text=announcement_text,
+                        parse_mode='HTML'
+                    )
+                    
+            except Exception as e:
+                logger.error(f"Error al publicar en el canal: {e}")
         else:
-            await update.message.reply_text(
-                f"❌ No se encontraron episodios con formato #x#\n\n"
-                f"Asegúrate de que los mensajes tengan el formato correcto en el caption (ej: 1x1, 2x5).",
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"⚠️ No se encontraron episodios de <b>{show_name}</b> "
+                     f"a partir del mensaje #{start_message_id}\n\n"
+                     f"Verifica que:\n"
+                     f"• Los mensajes tengan video\n"
+                     f"• El caption contenga '{show_name}'\n"
+                     f"• El caption tenga el formato #x# (ej: 1x1, 2x5)",
                 parse_mode='HTML'
             )
-    
-    return True
+            
+    except Exception as e:
+        logger.error(f"Error en scan_channel_for_episodes: {e}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"❌ Error durante el escaneo: {e}"
+        )
 
 async def index_series_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """

@@ -98,8 +98,61 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
     print(f"   User: {user_id}")
     print(f"   Video DB ID: {video.id} (Msg ID: {video_msg_id})")
     print(f"   URL: {webapp_url[:100]}...")
+
+async def send_episode_by_id(update, context, episode_id, user_id):
+    """Envía episodio con Mini App cuando viene desde verificación"""
+    db = context.bot_data['db']
+    
+    try:
+        # Obtener episodio
+        episode = await db.get_episode_by_id(episode_id)
+        
+        if not episode:
+            await update.message.reply_text(
+                "❌ Episodio no encontrado.\n\n"
+                "Puede que haya sido eliminado o no esté disponible."
+            )
+            return
+        
+        # Obtener serie
+        show = await db.get_tv_show_by_id(episode.tv_show_id)
+        
+        if not show:
+            await update.message.reply_text("❌ Serie no encontrada.")
+            return
+            
+    except Exception as e:
+        print(f"Error buscando episodio: {e}")
+        await update.message.reply_text(
+            "❌ Error al buscar el episodio. Por favor intenta más tarde."
+        )
+        return
+    
+    # Sistema nuevo: user_id + video_id (sin tokens)
+    from config.settings import WEBAPP_URL, API_SERVER_URL
+    from telegram import WebAppInfo
+    import urllib.parse
+    
+    # Preparar parámetros para la Mini App
+    episode_title = f"{show.name} - {episode.season_number}x{episode.episode_number:02d}"
+    if episode.title:
+        episode_title += f" - {episode.title}"
+    
+    title_encoded = urllib.parse.quote(episode_title)
+    poster_encoded = urllib.parse.quote(show.poster_url or "https://via.placeholder.com/300x450?text=Sin+Poster")
+    api_url_encoded = urllib.parse.quote(API_SERVER_URL)
+    
+    # Usar user_id y episode_id directamente
+    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={episode.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}&content_type=episode"
+    
+    print(f"📱 Abriendo Mini App para episodio:")
+    print(f"   User: {user_id}")
+    print(f"   Episode DB ID: {episode.id}")
+    print(f"   URL: {webapp_url[:100]}...")
     
     # Enviar mensaje con botón de Mini App
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    
     keyboard = [[
         InlineKeyboardButton(
             "📺 Ver Anuncio para Continuar",
@@ -109,8 +162,8 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"🎬 <b>{video.title}</b>\n\n"
-        f"Para ver esta película, primero debes ver un anuncio corto.\n\n"
+        f"📺 <b>{episode_title}</b>\n\n"
+        f"Para ver este episodio, primero debes ver un anuncio corto.\n\n"
         f"👇 Toca el botón de abajo para continuar:",
         reply_markup=reply_markup,
         parse_mode="HTML"
@@ -123,7 +176,7 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     db = context.bot_data['db']
     
-    # Verificar si viene desde "Ver Ahora"
+    # Verificar si viene desde "Ver Ahora" (película)
     if query.data.startswith("verify_video_"):
         video_msg_id = int(query.data.split("_")[2])
         
@@ -131,10 +184,29 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if is_member:
             await db.update_user_verification(user.id, True)
-            await query.edit_message_text("✅ Verificado! Enviando video...")
+            await query.edit_message_text("✅ Verificado! Enviando película...")
             
             # Enviar el video
             await send_video_by_message_id(query, context, video_msg_id, user.id)
+        else:
+            await query.edit_message_text(
+                "❌ Aún no te has unido al canal.\n"
+                "Por favor únete primero y vuelve a presionar el botón."
+            )
+        return
+    
+    # Verificar si viene desde "Ver Ahora" (episodio)
+    if query.data.startswith("verify_episode_"):
+        episode_id = int(query.data.split("_")[2])
+        
+        is_member = await is_user_member(user.id, context)
+        
+        if is_member:
+            await db.update_user_verification(user.id, True)
+            await query.edit_message_text("✅ Verificado! Enviando episodio...")
+            
+            # Enviar el episodio
+            await send_episode_by_id(query, context, episode_id, user.id)
         else:
             await query.edit_message_text(
                 "❌ Aún no te has unido al canal.\n"

@@ -14,7 +14,7 @@ from handlers.search import search_command, video_callback
 from handlers.admin import indexar_command, stats_command
 from handlers.text_handler import handle_text_message
 from handlers.callbacks import handle_callback
-from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command, process_auto_index
+from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command
 from handlers.admin_menu import admin_menu_command, admin_callback_handler, process_new_episode
 
 # Configurar logging
@@ -82,17 +82,11 @@ def main():
     application.add_handler(CallbackQueryHandler(video_callback, pattern="^video_"))
     
     # Handler de mensajes de texto (búsqueda contextual)
-    # Primero procesar auto-indexación si está activa
     async def text_handler_with_auto_index(update, context):
-        # Intentar procesar nuevo episodio primero
+        # Procesar nuevo episodio si está activa la espera
         handled = await process_new_episode(update, context)
-        if handled:
-            return
-        
-        # Intentar procesar auto-indexación
-        handled = await process_auto_index(update, context)
         if not handled:
-            # Si no es auto-index, procesar como mensaje normal
+            # Procesar como mensaje normal
             await handle_text_message(update, context)
     
     # Handler para respuestas con formato #x# (puede contener texto adicional)
@@ -102,12 +96,6 @@ def main():
     ))
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
-        text_handler_with_auto_index
-    ))
-    
-    # Handler para mensajes reenviados (auto-indexación)
-    application.add_handler(MessageHandler(
-        filters.FORWARDED,
         text_handler_with_auto_index
     ))
     
