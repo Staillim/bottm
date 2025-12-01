@@ -204,50 +204,40 @@
             tg.showAlert('Error al cargar el anuncio. Por favor intenta de nuevo.');
         };
         
-        // Función para mostrar el anuncio
+        // Función para mostrar el anuncio (Modo Directo / Sin Verificación)
         function showAd() {
             const btn = document.getElementById('watchAdBtn');
+            
+            // Si el botón ya está en modo continuar, ejecutar acción
+            if (btn.getAttribute('data-mode') === 'continue') {
+                onAdComplete();
+                return;
+            }
+
             btn.disabled = true;
-            btn.textContent = '⏳ Cargando anuncio...';
+            btn.textContent = '⏳ Procesando...';
             
-            // Resetear flags
-            adWasCompleted = false;
-            adWasShown = false;
-            
+            // Intentar mostrar anuncio (opcional, sin bloquear)
             try {
-                // Invocar el SDK - NO es async, solo inicia el anuncio
                 if (typeof show_10253964 === 'function') {
-                    show_10253964();
-                    adWasShown = true;
-                    
-                    // Cambiar el texto inmediatamente después de invocar
-                    setTimeout(function() {
-                        btn.textContent = '👀 Viendo anuncio...';
-                    }, 500);
-                    
-                    // Después de unos segundos, mostrar botón de confirmación manual
-                    setTimeout(function() {
-                        if (!adWasCompleted) {
-                            console.log('⏰ Habilitando confirmación manual');
-                            btn.disabled = false;
-                            btn.textContent = '✅ Ya terminé de ver el anuncio';
-                            btn.onclick = function() {
-                                console.log('Usuario confirmó manualmente');
-                                btn.disabled = true;
-                                btn.textContent = '⏳ Procesando...';
-                                onAdComplete();
-                            };
-                        }
-                    }, 5000); // 5 segundos para dar tiempo a ver el anuncio
-                } else {
-                    throw new Error('SDK de anuncios no cargado');
+                    show_10253964().catch(e => console.log('Ad error:', e));
                 }
             } catch (error) {
-                console.error('Error al invocar SDK:', error);
-                tg.showAlert('Error al cargar el anuncio. Verifica tu conexión.');
-                btn.disabled = false;
-                btn.textContent = '▶️ Ver Anuncio';
+                console.log('Error SDK (ignorado):', error);
             }
+            
+            // Cambiar a botón Continuar rápidamente (2 segundos)
+            setTimeout(function() {
+                btn.disabled = false;
+                btn.textContent = '✅ Continuar';
+                btn.setAttribute('data-mode', 'continue');
+                btn.classList.add('ready'); // Clase opcional para estilo
+                
+                // Actualizar onclick para ir directo a completar
+                btn.onclick = onAdComplete;
+                
+                console.log('✅ Botón cambiado a Continuar');
+            }, 2000);
         }
         
         // Función que se ejecuta cuando el anuncio se completa REALMENTE
