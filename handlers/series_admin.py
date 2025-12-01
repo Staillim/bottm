@@ -87,13 +87,17 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
     pattern = r'(\d+)[xX](\d+)'
     indexed_count = 0
     skipped_count = 0
-    search_range = 200  # Buscar hasta 200 mensajes hacia adelante
+    empty_count = 0  # Contador de mensajes vacíos consecutivos
+    max_empty = 5  # Detenerse después de 5 mensajes vacíos
+    last_indexed_message_id = start_message_id - 1  # Para guardar el último mensaje procesado
     
     show = await db.get_tv_show_by_id(show_id)
     
-    for offset in range(search_range):
+    offset = 0
+    while empty_count < max_empty:
         try:
             msg_id = start_message_id + offset
+            offset += 1
             
             # Intentar obtener el mensaje
             try:
@@ -107,10 +111,11 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await msg.delete()
                 
             except Exception:
-                # Mensaje no existe o no es accesible
+                # Mensaje no existe o no es accesible - contar como vacío
+                empty_count += 1
                 continue
             
-            # Buscar patrón S#x# en el caption
+            # Buscar patrón #x# en el caption
             text_to_search = msg.caption if msg.caption else (msg.text if msg.text else "")
             
             match = re.search(pattern, text_to_search)
@@ -118,11 +123,15 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 season_number = int(match.group(1))
                 episode_number = int(match.group(2))
                 
+                # Resetear contador de vacíos - encontramos algo válido
+                empty_count = 0
+                last_indexed_message_id = msg_id
+                
                 # IMPORTANTE: Verificar si ya existe para evitar duplicados
                 existing = await db.get_episode(show_id, season_number, episode_number)
                 if existing:
                     skipped_count += 1
-                    logger.info(f"⏭️ Saltando S{season_number}x{episode_number} - ya existe")
+                    logger.info(f"⏭️ Saltando {season_number}x{episode_number} - ya existe")
                     continue
                 
                 # Buscar info en TMDB
@@ -153,10 +162,22 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     indexed_count += 1
                     if indexed_count % 5 == 0:
                         await update.message.reply_text(f"📹 {indexed_count} episodios indexados...")
+            else:
+                # Mensaje sin patrón o sin video - contar como vacío
+                empty_count += 1
         
         except Exception as e:
             logger.error(f"Error procesando mensaje {msg_id}: {e}")
+            empty_count += 1
             continue
+    
+    # Guardar el último mensaje indexado en la base de datos
+    if last_indexed_message_id >= start_message_id:
+        try:
+            await db.set_config('last_indexed_message', str(last_indexed_message_id))
+            logger.info(f"📝 Último mensaje indexado guardado: {last_indexed_message_id}")
+        except Exception as e:
+            logger.error(f"Error guardando último mensaje: {e}")
     
     # Limpiar contexto
     context.user_data.pop('waiting_for_first_episode', None)
@@ -172,7 +193,9 @@ async def process_auto_index(update: Update, context: ContextTypes.DEFAULT_TYPE)
         status_msg += f"📹 {indexed_count} episodio(s) NUEVOS indexados\n"
         if skipped_count > 0:
             status_msg += f"⏭️ {skipped_count} ya existían (saltados)\n"
-        status_msg += f"📊 Total en DB: {total_episodes} episodios\n\n"
+        status_msg += f"📊 Total en DB: {total_episodes} episodios\n"
+        status_msg += f"🛑 Detenido tras {empty_count} mensajes vacíos\n"
+        status_msg += f"📝 Último mensaje: #{last_indexed_message_id}\n\n"
         status_msg += f"Usa /start para buscar la serie."
         
         await update.message.reply_text(status_msg, parse_mode='HTML')
