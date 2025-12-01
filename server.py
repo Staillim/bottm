@@ -88,14 +88,18 @@ def ad_completed():
         # Ejecutar código async en Flask
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        
+        # Crear instancia de DB local para evitar conflictos de Event Loop
+        # Esto es necesario porque Flask crea nuevos hilos/loops y SQLAlchemy Async
+        # no le gusta compartir el engine entre loops cerrados.
+        local_db = DatabaseManager()
 
         try:
-            # Inicializar DB si no está inicializada
-            if db is None:
-                loop.run_until_complete(init_db())
+            # Inicializar DB (crear tablas si no existen)
+            loop.run_until_complete(local_db.init_db())
 
             # Obtener información del video
-            video = loop.run_until_complete(db.get_video_by_id(video_id))
+            video = loop.run_until_complete(local_db.get_video_by_id(video_id))
 
             if not video:
                 print(f"❌ Video no encontrado: {video_id}")
@@ -173,6 +177,11 @@ def ad_completed():
             traceback.print_exc()
             return jsonify({'success': False, 'error': str(e)}), 500
         finally:
+            # Cerrar conexión a DB y Loop
+            try:
+                loop.run_until_complete(local_db.engine.dispose())
+            except:
+                pass
             loop.close()
 
     except Exception as e:

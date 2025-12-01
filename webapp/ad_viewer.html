@@ -150,7 +150,12 @@
         
         // Obtener parámetros de la URL
         const urlParams = new URLSearchParams(window.location.search);
-        const userId = urlParams.get('user_id');
+        
+        // Intentar obtener user_id de Telegram primero, luego de URL
+        const tgUserId = window.Telegram.WebApp.initDataUnsafe?.user?.id;
+        const paramUserId = urlParams.get('user_id');
+        const userId = tgUserId || paramUserId;
+        
         const videoId = urlParams.get('video_id');
         const movieTitle = urlParams.get('title');
         const posterUrl = urlParams.get('poster');
@@ -158,6 +163,13 @@
         console.log('👤 User ID:', userId);
         console.log('🎬 Video ID:', videoId);
         console.log('🎬 Película:', movieTitle);
+        
+        // Verificar datos críticos
+        if (!userId || !videoId) {
+            console.error('❌ Faltan datos críticos:', { userId, videoId });
+            // No mostramos popup aquí para no bloquear la UI inmediatamente,
+            // pero el botón de ver anuncio fallará o podemos deshabilitarlo.
+        }
         
         // Mostrar información de la película
         if (movieTitle) {
@@ -243,6 +255,16 @@
             document.getElementById('watchAdBtn').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
             
+            // Verificar datos antes de enviar
+            if (!userId || !videoId) {
+                tg.showPopup({
+                    title: 'Error de Datos',
+                    message: 'Faltan datos necesarios (ID de usuario o video). Por favor intenta buscar la película nuevamente (/buscar).',
+                    buttons: [{type: 'close'}]
+                }, () => tg.close());
+                return;
+            }
+            
             try {
                 // Obtener URL del servidor desde parámetros o usar default
                 const apiUrl = new URLSearchParams(window.location.search).get('api_url') || 'https://cinestelar-bot.onrender.com';
@@ -267,7 +289,7 @@
                 if (!response.ok) {
                     const errorText = await response.text();
                     console.error('❌ Error del servidor:', errorText);
-                    throw new Error(`Server error: ${response.status}`);
+                    throw new Error(`Server error: ${response.status} - ${errorText}`);
                 }
                 
                 const data = await response.json();
@@ -289,10 +311,15 @@
             } catch (error) {
                 console.error('❌ Error al notificar:', error);
                 
+                let msg = 'No se pudo enviar el video. Intenta nuevamente.';
+                if (error.message.includes('400')) msg = 'Datos inválidos. Busca la película de nuevo.';
+                if (error.message.includes('404')) msg = 'Video no encontrado en la base de datos.';
+                if (error.message.includes('500')) msg = 'Error interno del servidor. Intenta más tarde.';
+                
                 // Mostrar popup de error y cerrar
                 tg.showPopup({
                     title: 'Error',
-                    message: 'Hubo un problema al procesar tu solicitud. El video será enviado pronto.',
+                    message: msg,
                     buttons: [{type: 'close'}]
                 }, () => {
                     tg.close();
