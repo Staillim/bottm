@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, BigInteger
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, BigInteger, ForeignKey, Date
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 
@@ -27,6 +27,7 @@ class Video(Base):
     file_size = Column(BigInteger)
     duration = Column(Integer)
     added_at = Column(DateTime, server_default=func.now())
+    content_type = Column(String(20), default='movie')  # 'movie' o 'tv_episode'
     
     # Campos de TMDB
     tmdb_id = Column(Integer)
@@ -39,6 +40,48 @@ class Video(Base):
     runtime = Column(Integer)
     genres = Column(String(500))  # separados por coma
     channel_message_id = Column(BigInteger)  # ID del mensaje publicado en canal verificación
+
+class TvShow(Base):
+    __tablename__ = 'tv_shows'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(500), nullable=False)
+    tmdb_id = Column(Integer)
+    original_name = Column(String(500))
+    year = Column(Integer)
+    overview = Column(Text)
+    poster_url = Column(Text)
+    backdrop_url = Column(Text)
+    vote_average = Column(Integer)
+    genres = Column(Text)
+    number_of_seasons = Column(Integer)
+    status = Column(String(50))
+    added_at = Column(DateTime, server_default=func.now())
+
+class Episode(Base):
+    __tablename__ = 'episodes'
+    
+    id = Column(Integer, primary_key=True)
+    tv_show_id = Column(Integer, ForeignKey('tv_shows.id', ondelete='CASCADE'), nullable=False)
+    file_id = Column(String(200), nullable=False)
+    message_id = Column(Integer, nullable=False)
+    season_number = Column(Integer, nullable=False)
+    episode_number = Column(Integer, nullable=False)
+    title = Column(String(500))
+    overview = Column(Text)
+    air_date = Column(Date)
+    runtime = Column(Integer)
+    still_path = Column(Text)
+    channel_message_id = Column(Integer)
+    added_at = Column(DateTime, server_default=func.now())
+
+class UserNavigationState(Base):
+    __tablename__ = 'user_navigation_state'
+    
+    user_id = Column(BigInteger, primary_key=True)
+    current_menu = Column(String(50))
+    selected_show_id = Column(Integer, ForeignKey('tv_shows.id', ondelete='SET NULL'))
+    last_interaction = Column(DateTime, server_default=func.now())
 
 class Search(Base):
     __tablename__ = 'searches'

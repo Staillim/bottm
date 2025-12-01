@@ -71,9 +71,9 @@ def serve_webapp():
     """Sirve la Mini App de anuncios (versión simplificada)"""
     return send_file('webapp/ad_viewer_simple.html')
 
-def process_video_delivery(user_id, video_id):
-    """Procesa el envío del video en segundo plano"""
-    print(f"🔄 Iniciando proceso de envío en background para user_id={user_id}")
+def process_video_delivery(user_id, content_id, content_type='movie'):
+    """Procesa el envío del video/episodio en segundo plano"""
+    print(f"🔄 Iniciando proceso de envío en background para user_id={user_id}, content_type={content_type}")
     
     # Crear nuevo loop para este hilo
     loop = asyncio.new_event_loop()
@@ -86,17 +86,79 @@ def process_video_delivery(user_id, video_id):
         # Inicializar DB
         loop.run_until_complete(local_db.init_db())
 
-        # Obtener información del video
-        video = loop.run_until_complete(local_db.get_video_by_id(video_id))
+        if content_type == 'episode':
+            # Es un episodio de serie
+            episode = loop.run_until_complete(local_db.get_episode_by_id(content_id))
+            if not episode:
+                print(f"❌ Episodio no encontrado en background: {content_id}")
+                return
+            
+            show = loop.run_until_complete(local_db.get_tv_show_by_id(episode.tv_show_id))
+            if not show:
+                print(f"❌ Serie no encontrada en background: {episode.tv_show_id}")
+                return
+            
+            print(f"📺 Enviando episodio: {show.name} S{episode.season_number}x{episode.episode_number:02d} a user_id={user_id}")
+            
+            # Enviar episodio
+            bot = Bot(token=BOT_TOKEN)
+            
+            # Preparar caption
+            caption = f"📺 <b>{show.name}</b>\n"
+            caption += f"🎬 Temporada {episode.season_number}, Episodio {episode.episode_number}\n"
+            if episode.title:
+                caption += f"📝 {episode.title}\n"
+            if episode.air_date:
+                caption += f"📅 {episode.air_date}\n"
+            if episode.overview:
+                caption += f"\n{episode.overview}\n"
+            
+            try:
+                loop.run_until_complete(
+                    bot.send_video(
+                        chat_id=user_id,
+                        video=episode.file_id,
+                        caption=caption,
+                        parse_mode='HTML',
+                        read_timeout=60,
+                        write_timeout=60,
+                        connect_timeout=60
+                    )
+                )
+                print("✅ Episodio enviado exitosamente")
+            except Exception as e:
+                print(f"❌ Error enviando episodio: {e}")
+                try:
+                    loop.run_until_complete(
+                        bot.send_message(
+                            chat_id=user_id,
+                            text="❌ Hubo un error al enviar el episodio. Por favor intenta de nuevo más tarde."
+                        )
+                    )
+                except:
+                    pass
+                return
+            
+            # Mensaje de confirmación
+            loop.run_until_complete(
+                bot.send_message(
+                    chat_id=user_id,
+                    text="✅ ¡Disfruta el episodio!\n\nUsa /start para continuar navegando."
+                )
+            )
+            
+        else:
+            # Es una película (código existente)
+            video = loop.run_until_complete(local_db.get_video_by_id(content_id))
 
-        if not video:
-            print(f"❌ Video no encontrado en background: {video_id}")
-            return
+            if not video:
+                print(f"❌ Video no encontrado en background: {content_id}")
+                return
 
-        print(f"🎬 Enviando video: {video.title} a user_id={user_id}")
+            print(f"🎬 Enviando video: {video.title} a user_id={user_id}")
 
-        # Enviar el video al usuario
-        bot = Bot(token=BOT_TOKEN)
+            # Enviar el video al usuario
+            bot = Bot(token=BOT_TOKEN)
 
         # Si tiene poster, enviarlo primero
         if video.poster_url:
@@ -193,30 +255,31 @@ def ad_completed():
     try:
         data = request.json
         user_id = data.get('user_id')
-        video_id = data.get('video_id')
+        content_id = data.get('video_id')  # Puede ser video_id o episode_id
+        content_type = data.get('content_type', 'movie')  # 'movie' o 'episode'
 
-        print(f"📡 Recibida petición ad-completed: user_id={user_id} (type={type(user_id)}), video_id={video_id} (type={type(video_id)})")
+        print(f"📡 Recibida petición ad-completed: user_id={user_id}, content_id={content_id}, content_type={content_type}")
 
-        if not user_id or not video_id:
-            print("❌ user_id o video_id no proporcionado")
+        if not user_id or not content_id:
+            print("❌ user_id o content_id no proporcionado")
             return jsonify({'success': False, 'error': 'Datos incompletos'}), 400
 
         # Convertir a int si vienen como string
         try:
             user_id = int(user_id)
-            video_id = int(video_id)
-            print(f"✅ Convertidos a int: user_id={user_id}, video_id={video_id}")
+            content_id = int(content_id)
+            print(f"✅ Convertidos a int: user_id={user_id}, content_id={content_id}")
         except ValueError as e:
             print(f"❌ Error convirtiendo IDs: {e}")
             return jsonify({'success': False, 'error': 'IDs inválidos'}), 400
 
         # Iniciar proceso en background
-        print(f"🚀 Lanzando thread para procesar video...")
-        threading.Thread(target=process_video_delivery, args=(user_id, video_id), daemon=True).start()
+        print(f"🚀 Lanzando thread para procesar {content_type}...")
+        threading.Thread(target=process_video_delivery, args=(user_id, content_id, content_type), daemon=True).start()
         
         # Responder inmediatamente
         print(f"✅ Respondiendo OK al cliente")
-        return jsonify({'success': True, 'message': 'Procesando envío de video'})
+        return jsonify({'success': True, 'message': f'Procesando envío de {content_type}'})
 
     except Exception as e:
         print(f"❌ Error general en ad_completed: {e}")

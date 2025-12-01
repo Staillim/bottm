@@ -54,14 +54,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await db.update_user_verification(user.id, True)
-        await update.message.reply_text(
-            f"✅ ¡Bienvenido {user.first_name}!\n\n"
-            f"Ya estás verificado. Puedes comenzar a buscar videos.\n\n"
-            f"📝 Comandos disponibles:\n"
-            f"/buscar <término> - Buscar videos\n"
-            f"/search <término> - Search videos\n"
-            f"/help - Ver ayuda completa"
-        )
+        
+        # Mostrar menú interactivo de películas/series
+        from handlers.menu import main_menu
+        await main_menu(update, context)
 
 async def send_video_by_message_id(update, context, video_msg_id, user_id):
     """Envía Mini App con anuncio cuando viene desde canal"""

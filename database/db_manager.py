@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select, or_, func, update
-from .models import Base, User, Video, Search, Favorite, AdToken, BotConfig
+from .models import Base, User, Video, Search, Favorite, AdToken, BotConfig, TvShow, Episode, UserNavigationState
 from config.settings import DATABASE_URL
 import unicodedata
 import secrets
@@ -310,3 +310,229 @@ class DatabaseManager:
             
             await session.commit()
             return True
+    
+    # ==================== MÉTODOS PARA SERIES ====================
+    
+    async def add_tv_show(self, name, tmdb_id=None, original_name=None, year=None, 
+                         overview=None, poster_url=None, backdrop_url=None, 
+                         vote_average=None, genres=None, number_of_seasons=None, status=None):
+        """Agrega una nueva serie a la base de datos"""
+        async with self.async_session() as session:
+            try:
+                show = TvShow(
+                    name=name,
+                    tmdb_id=tmdb_id,
+                    original_name=original_name,
+                    year=year,
+                    overview=overview,
+                    poster_url=poster_url,
+                    backdrop_url=backdrop_url,
+                    vote_average=vote_average,
+                    genres=genres,
+                    number_of_seasons=number_of_seasons,
+                    status=status
+                )
+                session.add(show)
+                await session.commit()
+                await session.refresh(show)
+                return show
+            except Exception as e:
+                print(f"❌ Error al agregar serie: {e}")
+                await session.rollback()
+                return None
+    
+    async def get_tv_show_by_id(self, show_id):
+        """Obtiene una serie por su ID"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(TvShow).where(TvShow.id == show_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def get_tv_show_by_tmdb_id(self, tmdb_id):
+        """Obtiene una serie por su TMDB ID"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(TvShow).where(TvShow.tmdb_id == tmdb_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def search_tv_shows(self, query, limit=10):
+        """Busca series por nombre"""
+        async with self.async_session() as session:
+            if not query or query.strip() == "":
+                result = await session.execute(
+                    select(TvShow).order_by(TvShow.added_at.desc()).limit(limit)
+                )
+                return result.scalars().all()
+            
+            normalized_query = self.normalize_text(query)
+            search_terms = normalized_query.split()
+            
+            result = await session.execute(
+                select(TvShow).order_by(TvShow.added_at.desc()).limit(500)
+            )
+            all_shows = result.scalars().all()
+            
+            matching_shows = []
+            for show in all_shows:
+                norm_name = self.normalize_text(show.name or "")
+                norm_original = self.normalize_text(show.original_name or "")
+                
+                score = 0
+                
+                if normalized_query in norm_name:
+                    score += 10
+                if normalized_query in norm_original:
+                    score += 8
+                
+                for term in search_terms:
+                    if term in norm_name:
+                        score += 3
+                    if term in norm_original:
+                        score += 2
+                
+                if score > 0:
+                    matching_shows.append((score, show))
+            
+            matching_shows.sort(key=lambda x: x[0], reverse=True)
+            return [show for score, show in matching_shows[:limit]]
+    
+    async def add_episode(self, tv_show_id, file_id, message_id, season_number, 
+                         episode_number, title=None, overview=None, air_date=None, 
+                         runtime=None, still_path=None, channel_message_id=None):
+        """Agrega un nuevo episodio a la base de datos"""
+        async with self.async_session() as session:
+            try:
+                episode = Episode(
+                    tv_show_id=tv_show_id,
+                    file_id=file_id,
+                    message_id=message_id,
+                    season_number=season_number,
+                    episode_number=episode_number,
+                    title=title,
+                    overview=overview,
+                    air_date=air_date,
+                    runtime=runtime,
+                    still_path=still_path,
+                    channel_message_id=channel_message_id
+                )
+                session.add(episode)
+                await session.commit()
+                await session.refresh(episode)
+                return episode
+            except Exception as e:
+                print(f"❌ Error al agregar episodio: {e}")
+                await session.rollback()
+                return None
+    
+    async def get_episode_by_id(self, episode_id):
+        """Obtiene un episodio por su ID"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Episode).where(Episode.id == episode_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def get_episode(self, tv_show_id, season_number, episode_number):
+        """Obtiene un episodio específico"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Episode).where(
+                    Episode.tv_show_id == tv_show_id,
+                    Episode.season_number == season_number,
+                    Episode.episode_number == episode_number
+                )
+            )
+            return result.scalar_one_or_none()
+    
+    async def get_episode_by_message_id(self, message_id):
+        """Obtiene un episodio por su message_id"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Episode).where(Episode.message_id == message_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def get_episodes_by_show(self, tv_show_id):
+        """Obtiene todos los episodios de una serie"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Episode)
+                .where(Episode.tv_show_id == tv_show_id)
+                .order_by(Episode.season_number, Episode.episode_number)
+            )
+            return result.scalars().all()
+    
+    async def get_episodes_by_season(self, tv_show_id, season_number):
+        """Obtiene todos los episodios de una temporada"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Episode)
+                .where(
+                    Episode.tv_show_id == tv_show_id,
+                    Episode.season_number == season_number
+                )
+                .order_by(Episode.episode_number)
+            )
+            return result.scalars().all()
+    
+    async def get_seasons_for_show(self, tv_show_id):
+        """Obtiene lista de temporadas disponibles con conteo de episodios"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(
+                    Episode.season_number,
+                    func.count(Episode.id).label('episode_count')
+                )
+                .where(Episode.tv_show_id == tv_show_id)
+                .group_by(Episode.season_number)
+                .order_by(Episode.season_number)
+            )
+            return result.all()
+    
+    # ==================== MÉTODOS PARA NAVEGACIÓN ====================
+    
+    async def set_user_state(self, user_id, menu, show_id=None):
+        """Guarda el estado de navegación del usuario"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserNavigationState).where(UserNavigationState.user_id == user_id)
+            )
+            state = result.scalar_one_or_none()
+            
+            if state:
+                state.current_menu = menu
+                state.selected_show_id = show_id
+                state.last_interaction = datetime.utcnow()
+            else:
+                state = UserNavigationState(
+                    user_id=user_id,
+                    current_menu=menu,
+                    selected_show_id=show_id
+                )
+                session.add(state)
+            
+            await session.commit()
+            return True
+    
+    async def get_user_state(self, user_id):
+        """Obtiene el estado de navegación del usuario"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserNavigationState).where(UserNavigationState.user_id == user_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def clear_user_state(self, user_id):
+        """Limpia el estado de navegación del usuario"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserNavigationState).where(UserNavigationState.user_id == user_id)
+            )
+            state = result.scalar_one_or_none()
+            if state:
+                await session.delete(state)
+                await session.commit()
+            return True
+
