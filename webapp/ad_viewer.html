@@ -148,11 +148,16 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
         
+        // DEBUG: Mostrar toda la información disponible
+        console.log('🔍 DEBUG - URL completa:', window.location.href);
+        console.log('🔍 DEBUG - Telegram initData:', tg.initData);
+        console.log('🔍 DEBUG - Telegram initDataUnsafe:', tg.initDataUnsafe);
+        
         // Obtener parámetros de la URL
         const urlParams = new URLSearchParams(window.location.search);
         
         // Intentar obtener user_id de Telegram primero, luego de URL
-        const tgUserId = window.Telegram.WebApp.initDataUnsafe?.user?.id;
+        const tgUserId = tg.initDataUnsafe?.user?.id;
         const paramUserId = urlParams.get('user_id');
         const userId = tgUserId || paramUserId;
         
@@ -160,15 +165,20 @@
         const movieTitle = urlParams.get('title');
         const posterUrl = urlParams.get('poster');
         
-        console.log('👤 User ID:', userId);
+        console.log('👤 User ID (Telegram):', tgUserId);
+        console.log('👤 User ID (URL param):', paramUserId);
+        console.log('👤 User ID (final):', userId);
         console.log('🎬 Video ID:', videoId);
         console.log('🎬 Película:', movieTitle);
         
-        // Verificar datos críticos
+        // Verificar datos críticos INMEDIATAMENTE
         if (!userId || !videoId) {
-            console.error('❌ Faltan datos críticos:', { userId, videoId });
-            // No mostramos popup aquí para no bloquear la UI inmediatamente,
-            // pero el botón de ver anuncio fallará o podemos deshabilitarlo.
+            console.error('❌ FALTAN DATOS CRÍTICOS:', { userId, videoId });
+            tg.showPopup({
+                title: 'Error de Configuración',
+                message: `Faltan datos: ${!userId ? 'User ID' : ''} ${!videoId ? 'Video ID' : ''}. URL: ${window.location.href.substring(0, 100)}`,
+                buttons: [{type: 'close'}]
+            }, () => tg.close());
         }
         
         // Mostrar información de la película
