@@ -7,23 +7,41 @@ from config.settings import BOT_TOKEN, STORAGE_CHANNEL_ID
 LAST_INDEX_FILE = "last_indexed_message.txt"
 MAX_EMPTY_MESSAGES = 10  # Detener después de 10 mensajes vacíos consecutivos
 
-def get_last_indexed():
-    """Obtiene el último mensaje indexado desde el archivo o comienza desde 812."""
+async def get_last_indexed(db):
+    """Obtiene el último mensaje indexado desde la base de datos primero, luego archivo, o comienza desde 812."""
+    # Intentar desde la base de datos primero
+    last_msg = await db.get_config('last_indexed_message')
+    if last_msg:
+        return int(last_msg)
+    
+    # Si no está en DB, intentar desde archivo
     if os.path.exists(LAST_INDEX_FILE):
         try:
             with open(LAST_INDEX_FILE, 'r') as f:
-                return int(f.read().strip())
+                msg_id = int(f.read().strip())
+                # Migrar a DB
+                await db.set_config('last_indexed_message', msg_id)
+                print(f"📦 Migrado desde archivo a DB: {msg_id}")
+                return msg_id
         except:
-            return 812  # Empezar desde 812 si hay error
-    return 812  # Empezar desde 812 si no existe el archivo
+            pass
+    
+    # Por defecto, empezar desde 812
+    await db.set_config('last_indexed_message', 812)
+    return 812
 
-def save_last_indexed(msg_id):
-    """Guarda el último mensaje indexado en el archivo"""
+async def save_last_indexed(db, msg_id):
+    """Guarda el último mensaje indexado en la base de datos"""
     try:
-        with open(LAST_INDEX_FILE, 'w') as f:
-            f.write(str(msg_id))
+        await db.set_config('last_indexed_message', msg_id)
     except Exception as e:
-        print(f"Error al guardar el progreso: {e}")
+        print(f"Error al guardar el progreso en DB: {e}")
+        # Fallback al archivo
+        try:
+            with open(LAST_INDEX_FILE, 'w') as f:
+                f.write(str(msg_id))
+        except Exception as e2:
+            print(f"Error al guardar en archivo también: {e2}")
 
 async def index_channel_videos():
     bot = Bot(token=BOT_TOKEN)
@@ -34,7 +52,7 @@ async def index_channel_videos():
     bot_info = await bot.get_me()
     bot_chat_id = f"@{bot_info.username}"
     
-    start_from = get_last_indexed()
+    start_from = await get_last_indexed(db)
     
     print("Iniciando indexación de videos...")
     print(f"Canal de almacén: {STORAGE_CHANNEL_ID}")
@@ -56,12 +74,7 @@ async def index_channel_videos():
             if existing_video:
                 print(f"⚠️ Video ya indexado: {current_msg_id}")
                 last_video_msg_id = current_msg_id  # Actualizar último mensaje con video
-                try:
-                    save_last_indexed(current_msg_id + 1)
-                except Exception as e:
-                    print(f"Error al guardar el progreso: {e}")
-                finally:
-                    pass
+                await save_last_indexed(db, current_msg_id + 1)
                 current_msg_id += 1
                 continue
 
@@ -91,12 +104,7 @@ async def index_channel_videos():
                     if existing_video:
                         print(f"⚠️ Video duplicado detectado al agregar: {current_msg_id}")
                         last_video_msg_id = current_msg_id  # Actualizar último mensaje con video
-                        try:
-                            save_last_indexed(current_msg_id + 1)
-                        except Exception as e:
-                            print(f"Error al guardar el progreso: {e}")
-                        finally:
-                            pass
+                        await save_last_indexed(db, current_msg_id + 1)
                         current_msg_id += 1
                         continue
 
@@ -112,10 +120,7 @@ async def index_channel_videos():
                     print(f"✅ [{current_msg_id}] Indexado: {title}")
 
                     # Guardar progreso después de cada video indexado
-                    try:
-                        save_last_indexed(current_msg_id + 1)
-                    except Exception as e:
-                        print(f"Error al guardar el progreso: {e}")
+                    await save_last_indexed(db, current_msg_id + 1)
                 else:
                     empty_count += 1
                     print(f"⏭️  [{current_msg_id}] Sin video ({empty_count}/{MAX_EMPTY_MESSAGES})")
@@ -131,12 +136,8 @@ async def index_channel_videos():
             continue
     
     # Guardar el último mensaje procesado (último video + 1)
-    try:
-        save_last_indexed(last_video_msg_id + 1)
-    except Exception as e:
-        print(f"Error al guardar el último mensaje procesado: {e}")
-    finally:
-        pass
+    await save_last_indexed(db, last_video_msg_id + 1)
+    
     print("-" * 50)
     print(f"\n✅ Indexación completa: {indexed} videos indexados")
     print(f"📍 Último mensaje procesado: {last_video_msg_id}")

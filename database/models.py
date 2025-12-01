@@ -70,3 +70,11 @@ class AdToken(Base):
     completed_at = Column(DateTime)
     expires_at = Column(DateTime)  # Tokens expiran después de 24 horas
     ip_address = Column(String(50))  # Para detectar uso abusivo
+
+class BotConfig(Base):
+    __tablename__ = 'bot_config'
+    
+    id = Column(Integer, primary_key=True)
+    key = Column(String(100), unique=True, nullable=False)  # Ej: 'last_indexed_message'
+    value = Column(String(500), nullable=False)  # Valor como string
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

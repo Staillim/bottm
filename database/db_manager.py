@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select, or_, func, update
-from .models import Base, User, Video, Search, Favorite, AdToken
+from .models import Base, User, Video, Search, Favorite, AdToken, BotConfig
 from config.settings import DATABASE_URL
 import unicodedata
 import secrets
@@ -283,3 +283,30 @@ class DatabaseManager:
         except Exception as e:
             print(f"[ERROR] Error al buscar video con message_id={message_id}: {e}")
             return None
+    
+    async def get_config(self, key, default=None):
+        """Obtiene un valor de configuración de la base de datos"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(BotConfig).where(BotConfig.key == key)
+            )
+            config = result.scalar_one_or_none()
+            return config.value if config else default
+    
+    async def set_config(self, key, value):
+        """Guarda o actualiza un valor de configuración en la base de datos"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(BotConfig).where(BotConfig.key == key)
+            )
+            config = result.scalar_one_or_none()
+            
+            if config:
+                config.value = str(value)
+                config.updated_at = datetime.utcnow()
+            else:
+                config = BotConfig(key=key, value=str(value))
+                session.add(config)
+            
+            await session.commit()
+            return True
