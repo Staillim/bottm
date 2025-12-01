@@ -137,12 +137,31 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
     
     # Usar user_id y video_id directamente (sin tokens)
     # IMPORTANTE: Usar video.id (ID de base de datos), NO video_msg_id (ID de mensaje en canal)
-    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}"
+    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}&content_type=movie"
     
     print(f"📱 Abriendo Mini App desde deep link:")
     print(f"   User: {user_id}")
     print(f"   Video DB ID: {video.id} (Msg ID: {video_msg_id})")
     print(f"   URL: {webapp_url[:100]}...")
+    
+    # Enviar mensaje con botón de Mini App
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    
+    keyboard = [[
+        InlineKeyboardButton(
+            "🎬 Ver Anuncio para Continuar",
+            web_app=WebAppInfo(url=webapp_url)
+        )
+    ]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"🎬 <b>{video.title}</b>\n\n"
+        f"Para ver esta película, primero debes ver un anuncio corto.\n\n"
+        f"👇 Toca el botón de abajo para continuar:",
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
 
 async def send_episode_by_id(update, context, episode_id, user_id):
     """Envía episodio con Mini App cuando viene desde verificación"""
