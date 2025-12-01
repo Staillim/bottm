@@ -85,104 +85,123 @@ def ad_completed():
             print("❌ user_id o video_id no proporcionado")
             return jsonify({'success': False, 'error': 'Datos incompletos'}), 400
 
-        # Ejecutar código async en Flask
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        # Crear instancia de DB local para evitar conflictos de Event Loop
-        # Esto es necesario porque Flask crea nuevos hilos/loops y SQLAlchemy Async
-        # no le gusta compartir el engine entre loops cerrados.
-        local_db = DatabaseManager()
+def process_video_delivery(user_id, video_id):
+    """Procesa el envío del video en segundo plano"""
+    print(f"🔄 Iniciando proceso de envío en background para user_id={user_id}")
+    
+    # Crear nuevo loop para este hilo
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # Crear instancia de DB local
+    local_db = DatabaseManager()
 
-        try:
-            # Inicializar DB (crear tablas si no existen)
-            loop.run_until_complete(local_db.init_db())
+    try:
+        # Inicializar DB
+        loop.run_until_complete(local_db.init_db())
 
-            # Obtener información del video
-            video = loop.run_until_complete(local_db.get_video_by_id(video_id))
+        # Obtener información del video
+        video = loop.run_until_complete(local_db.get_video_by_id(video_id))
 
-            if not video:
-                print(f"❌ Video no encontrado: {video_id}")
-                return jsonify({'success': False, 'error': 'Video no encontrado'}), 404
+        if not video:
+            print(f"❌ Video no encontrado en background: {video_id}")
+            return
 
-            print(f"🎬 Enviando video: {video.title} a user_id={user_id}")
+        print(f"🎬 Enviando video: {video.title} a user_id={user_id}")
 
-            # Enviar el video al usuario
-            bot = Bot(token=BOT_TOKEN)
+        # Enviar el video al usuario
+        bot = Bot(token=BOT_TOKEN)
 
-            # Si tiene poster, enviarlo primero
-            if video.poster_url:
-                try:
-                    import io
-                    import requests as req
-
-                    response = req.get(video.poster_url, timeout=10)
-                    response.raise_for_status()
-                    photo = io.BytesIO(response.content)
-                    photo.name = "poster.jpg"
-
-                    caption = f"🎬 <b>{video.title}</b>\n"
-                    if video.year:
-                        caption += f"📅 {video.year}\n"
-                    if video.vote_average:
-                        caption += f"⭐ {video.vote_average/10:.1f}/10\n"
-                    if video.runtime:
-                        caption += f"⏱️ {video.runtime} min\n"
-                    if video.genres:
-                        caption += f"🎭 {video.genres}\n"
-                    if video.overview:
-                        caption += f"\n📝 {video.overview}\n"
-
-                    loop.run_until_complete(
-                        bot.send_photo(
-                            chat_id=user_id,
-                            photo=photo,
-                            caption=caption,
-                            parse_mode="HTML"
-                        )
-                    )
-                    print("📸 Poster enviado")
-                except Exception as e:
-                    print(f"⚠️ Error enviando poster: {e}")
-
-            # Enviar video
-            caption_text = f"📹 *{video.title}*"
-            if video.description:
-                caption_text += f"\n\n{video.description}"
-
-            loop.run_until_complete(
-                bot.send_video(
-                    chat_id=user_id,
-                    video=video.file_id,
-                    caption=caption_text,
-                    parse_mode='Markdown'
-                )
-            )
-            print("🎥 Video enviado")
-
-            # Enviar mensaje de confirmación
-            loop.run_until_complete(
-                bot.send_message(
-                    chat_id=user_id,
-                    text="✅ ¡Disfruta tu película!\n\nUsa /buscar para encontrar más contenido."
-                )
-            )
-            print("💬 Mensaje de confirmación enviado")
-
-            return jsonify({'success': True, 'message': 'Video enviado correctamente'})
-
-        except Exception as e:
-            print(f"❌ Error procesando anuncio: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({'success': False, 'error': str(e)}), 500
-        finally:
-            # Cerrar conexión a DB y Loop
+        # Si tiene poster, enviarlo primero
+        if video.poster_url:
             try:
-                loop.run_until_complete(local_db.engine.dispose())
-            except:
-                pass
-            loop.close()
+                import io
+                import requests as req
+
+                response = req.get(video.poster_url, timeout=10)
+                response.raise_for_status()
+                photo = io.BytesIO(response.content)
+                photo.name = "poster.jpg"
+
+                caption = f"🎬 <b>{video.title}</b>\n"
+                if video.year:
+                    caption += f"📅 {video.year}\n"
+                if video.vote_average:
+                    caption += f"⭐ {video.vote_average/10:.1f}/10\n"
+                if video.runtime:
+                    caption += f"⏱️ {video.runtime} min\n"
+                if video.genres:
+                    caption += f"🎭 {video.genres}\n"
+                if video.overview:
+                    caption += f"\n📝 {video.overview}\n"
+
+                loop.run_until_complete(
+                    bot.send_photo(
+                        chat_id=user_id,
+                        photo=photo,
+                        caption=caption,
+                        parse_mode="HTML"
+                    )
+                )
+                print("📸 Poster enviado")
+            except Exception as e:
+                print(f"⚠️ Error enviando poster: {e}")
+
+        # Enviar video
+        caption_text = f"📹 *{video.title}*"
+        if video.description:
+            caption_text += f"\n\n{video.description}"
+
+        loop.run_until_complete(
+            bot.send_video(
+                chat_id=user_id,
+                video=video.file_id,
+                caption=caption_text,
+                parse_mode='Markdown'
+            )
+        )
+        print("🎥 Video enviado")
+
+        # Enviar mensaje de confirmación
+        loop.run_until_complete(
+            bot.send_message(
+                chat_id=user_id,
+                text="✅ ¡Disfruta tu película!\n\nUsa /buscar para encontrar más contenido."
+            )
+        )
+        print("💬 Mensaje de confirmación enviado")
+
+    except Exception as e:
+        print(f"❌ Error en background process: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Cerrar conexión a DB y Loop
+        try:
+            loop.run_until_complete(local_db.engine.dispose())
+        except:
+            pass
+        loop.close()
+
+@app.route('/api/ad-completed', methods=['POST'])
+def ad_completed():
+    """Endpoint que se llama cuando el usuario completa el anuncio (sin tokens, directo)"""
+    try:
+        data = request.json
+        user_id = data.get('user_id')
+        video_id = data.get('video_id')
+
+        print(f"📡 Recibida petición ad-completed: user_id={user_id}, video_id={video_id}")
+
+        if not user_id or not video_id:
+            print("❌ user_id o video_id no proporcionado")
+            return jsonify({'success': False, 'error': 'Datos incompletos'}), 400
+
+        # Iniciar proceso en background
+        threading.Thread(target=process_video_delivery, args=(user_id, video_id)).start()
+        
+        # Responder inmediatamente
+        return jsonify({'success': True, 'message': 'Procesando envío de video'})
 
     except Exception as e:
         print(f"❌ Error general en ad_completed: {e}")
