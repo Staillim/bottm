@@ -153,12 +153,12 @@ async def admin_add_episode(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if all_episodes:
         last_episode = max(all_episodes, key=lambda ep: (ep.season_number, ep.episode_number))
     
-    # Guardar en contexto
-    context.user_data['adding_episode_show_id'] = show_id
-    context.user_data['adding_episode_show_name'] = show.name
-    context.user_data['waiting_for_new_episode'] = True
+    # Guardar en contexto para auto-indexación
+    context.user_data['auto_index_show_id'] = show_id
+    context.user_data['auto_index_show_name'] = show.name
+    context.user_data['waiting_for_first_episode'] = True
     
-    message_text = f"➕ <b>Agregar Nuevo Episodio</b>\n\n"
+    message_text = f"➕ <b>Agregar Nuevos Episodios</b>\n\n"
     message_text += f"📺 Serie: <b>{show.name}</b>\n\n"
     
     if last_episode:
@@ -169,10 +169,11 @@ async def admin_add_episode(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         message_text += f"\n\n"
     
     message_text += f"📝 <b>Instrucciones:</b>\n"
-    message_text += f"1️⃣ Sube el video al canal de almacenamiento con caption <code>#x#</code>\n"
-    message_text += f"2️⃣ Reenvía ese mensaje aquí\n"
-    message_text += f"3️⃣ El bot lo indexará automáticamente\n\n"
-    message_text += f"Ejemplo: <code>1x5</code>, <code>2x1</code>"
+    message_text += f"1️⃣ Sube los videos al canal de almacenamiento con caption <code>#x#</code>\n"
+    message_text += f"2️⃣ Reenvía el PRIMER episodio nuevo aquí\n"
+    message_text += f"3️⃣ El bot escaneará automáticamente hasta encontrar todos los episodios\n"
+    message_text += f"4️⃣ Se detendrá tras 5 mensajes vacíos\n\n"
+    message_text += f"Ejemplo: <code>1x5</code>, <code>2x1</code> o <code>Loki 1x5</code>"
     
     keyboard = [[InlineKeyboardButton("❌ Cancelar", callback_data=f"admin_show_{show_id}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
