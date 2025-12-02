@@ -302,6 +302,35 @@ class DatabaseManager:
             print(f"[ERROR] Error al buscar video con message_id={message_id}: {e}")
             return None
     
+    async def update_video(self, message_id, **kwargs):
+        """Actualiza un video existente por su message_id"""
+        try:
+            async with self.async_session() as session:
+                result = await session.execute(
+                    select(Video).where(Video.message_id == message_id)
+                )
+                video = result.scalar_one_or_none()
+                
+                if not video:
+                    print(f"⚠️ Video con message_id={message_id} no encontrado para actualizar")
+                    return False
+                
+                # Actualizar solo los campos proporcionados
+                for key, value in kwargs.items():
+                    if hasattr(video, key):
+                        # Truncar strings largos
+                        if isinstance(value, str) and len(value) > 500:
+                            value = value[:500]
+                        setattr(video, key, value)
+                
+                await session.commit()
+                print(f"✅ Video {message_id} actualizado: {video.title}")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Error al actualizar video {message_id}: {e}")
+            return False
+    
     async def get_config(self, key, default=None):
         """Obtiene un valor de configuración de la base de datos"""
         async with self.async_session() as session:

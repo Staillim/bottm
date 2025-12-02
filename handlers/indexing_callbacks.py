@@ -199,32 +199,18 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
         
         if existing:
             # Actualizar video existente
-            await db.execute(
-                """UPDATE videos SET 
-                   title = :title,
-                   tmdb_id = :tmdb_id,
-                   original_title = :original_title,
-                   year = :year,
-                   overview = :overview,
-                   poster_url = :poster_url,
-                   backdrop_url = :backdrop_url,
-                   vote_average = :vote_average,
-                   genres = :genres,
-                   channel_message_id = :channel_message_id
-                   WHERE message_id = :message_id""",
-                {
-                    "title": video_data["title"],
-                    "tmdb_id": video_data["tmdb_id"],
-                    "original_title": video_data["original_title"],
-                    "year": video_data["year"],
-                    "overview": video_data["overview"],
-                    "poster_url": video_data["poster_url"],
-                    "backdrop_url": video_data["backdrop_url"],
-                    "vote_average": video_data["vote_average"],
-                    "genres": video_data["genres"],
-                    "channel_message_id": video_data.get("channel_message_id"),
-                    "message_id": msg_id
-                }
+            await db.update_video(
+                message_id=msg_id,
+                title=video_data["title"],
+                tmdb_id=video_data["tmdb_id"],
+                original_title=video_data["original_title"],
+                year=video_data["year"],
+                overview=video_data["overview"],
+                poster_url=video_data["poster_url"],
+                backdrop_url=video_data["backdrop_url"],
+                vote_average=video_data["vote_average"],
+                genres=video_data["genres"],
+                channel_message_id=video_data.get("channel_message_id")
             )
             action = "actualizado"
         else:

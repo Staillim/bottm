@@ -505,9 +505,9 @@ async def reindex_republish(update, context, msg_id):
     
     if channel_msg:
         # Actualizar channel_message_id
-        await db.execute(
-            "UPDATE videos SET channel_message_id = :msg_id WHERE message_id = :video_msg_id",
-            {"msg_id": channel_msg.message_id, "video_msg_id": msg_id}
+        await db.update_video(
+            message_id=msg_id,
+            channel_message_id=channel_msg.message_id
         )
         await query.edit_message_text(f"✅ Publicado en canal (message_id: {channel_msg.message_id})")
     else:
