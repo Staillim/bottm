@@ -94,6 +94,14 @@ async def handle_repost_channel_input(update: Update, context: ContextTypes.DEFA
     """Maneja el input del ID del canal"""
     user = update.effective_user
     
+    # Si no hay usuario (mensaje de canal, etc.), ignorar
+    if not user:
+        return
+    
+    # Si no hay mensaje de texto, ignorar
+    if not update.message or not update.message.text:
+        return
+    
     # Verificar si hay sesión activa
     if user.id not in repost_sessions:
         return
