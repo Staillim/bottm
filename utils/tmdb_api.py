@@ -25,6 +25,8 @@ class TMDBApi:
         try:
             # 1. Buscar en español con año
             results = self._search_with_language(title, "es-ES", year, return_all=True)
+            if results is None:
+                results = []
             
             # 2. Si no encuentra suficientes, buscar en inglés
             if len(results) < limit:
@@ -40,6 +42,8 @@ class TMDBApi:
             # 3. Si aún no encuentra y había año, intentar sin año
             if len(results) == 0 and year:
                 results = self._search_with_language(title, "es-ES", None, return_all=True)
+                if results is None:
+                    results = []
                 if len(results) < limit:
                     en_results = self._search_with_language(title, "en-US", None, return_all=True)
                     existing_ids = {r['tmdb_id'] for r in results}

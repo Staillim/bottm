@@ -183,14 +183,49 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
         if channel_msg:
             video_data["channel_message_id"] = channel_msg.message_id
         
-        # Guardar en BD
-        await db.add_video(**video_data)
+        # Verificar si ya existe (re-indexación)
+        existing = await db.get_video_by_message_id(msg_id)
+        
+        if existing:
+            # Actualizar video existente
+            await db.execute(
+                """UPDATE videos SET 
+                   title = :title,
+                   tmdb_id = :tmdb_id,
+                   original_title = :original_title,
+                   year = :year,
+                   overview = :overview,
+                   poster_url = :poster_url,
+                   backdrop_url = :backdrop_url,
+                   vote_average = :vote_average,
+                   genres = :genres,
+                   channel_message_id = :channel_message_id
+                   WHERE message_id = :message_id""",
+                {
+                    "title": video_data["title"],
+                    "tmdb_id": video_data["tmdb_id"],
+                    "original_title": video_data["original_title"],
+                    "year": video_data["year"],
+                    "overview": video_data["overview"],
+                    "poster_url": video_data["poster_url"],
+                    "backdrop_url": video_data["backdrop_url"],
+                    "vote_average": video_data["vote_average"],
+                    "genres": video_data["genres"],
+                    "channel_message_id": video_data.get("channel_message_id"),
+                    "message_id": msg_id
+                }
+            )
+            action = "actualizado"
+        else:
+            # Guardar nuevo video en BD
+            await db.add_video(**video_data)
+            action = "guardado"
         
         # Actualizar estadísticas
         session.stats['indexed'] += 1
         
         await query.edit_message_text(
-            f"✅ <b>{movie_data['title']}</b> guardado exitosamente!\n\n"
+            f"✅ <b>{movie_data['title']}</b> {action} exitosamente!\n\n"
             f"📊 Progreso: {session.stats['indexed']} indexados",
             parse_mode='HTML'
         )
@@ -267,6 +302,10 @@ async def handle_title_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     cleaned, year = clean_title(new_title)
     results = tmdb.search_movie(cleaned, year=year, return_multiple=True, limit=5)
+    
+    # Asegurar que results sea lista
+    if results is None:
+        results = []
     
     if not results:
         keyboard = [

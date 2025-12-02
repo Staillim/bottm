@@ -161,6 +161,10 @@ async def process_video_with_confirmation(update, context, msg, msg_id, tmdb, db
     # Buscar en TMDB
     results = tmdb.search_movie(cleaned, year=year, return_multiple=True, limit=5)
     
+    # Asegurar que results sea lista
+    if results is None:
+        results = []
+    
     if not results:
         # NO SE ENCONTRÓ - Pedir confirmación
         keyboard = [
@@ -426,6 +430,10 @@ async def reindex_search_tmdb(update, context, msg_id):
     cleaned, year = clean_title(existing.title)
     results = tmdb.search_movie(cleaned, year=year, return_multiple=True, limit=5)
     
+    # Asegurar que results sea lista
+    if results is None:
+        results = []
+    
     if not results:
         await query.edit_message_text(
             f"❌ No se encontraron resultados para: <b>{existing.title}</b>",
@@ -440,10 +448,18 @@ async def reindex_request_new_title(update, context, msg_id):
     """Solicita nuevo título para buscar"""
     query = update.callback_query
     user_id = update.effective_user.id
+    db = context.bot_data['db']
+    
+    # Obtener video existente para guardar file_id
+    existing = await db.get_video_by_message_id(msg_id)
+    if not existing:
+        await query.edit_message_text("❌ Video no encontrado en BD.")
+        return
     
     session = IndexingSession(user_id)
     session.current_message_id = msg_id
     session.awaiting_title_input = True
+    session.current_video_data = {'file_id': existing.file_id}
     indexing_sessions[user_id] = session
     
     await query.edit_message_text(
