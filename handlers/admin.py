@@ -481,6 +481,16 @@ async def reindex_republish(update, context, msg_id):
     
     await query.edit_message_text("📢 Publicando en canal...")
     
+    # Eliminar mensaje antiguo del canal si existe
+    if existing.channel_message_id:
+        try:
+            await context.bot.delete_message(
+                chat_id=VERIFICATION_CHANNEL_ID,
+                message_id=existing.channel_message_id
+            )
+        except Exception as e:
+            print(f"⚠️ No se pudo eliminar mensaje antiguo: {e}")
+    
     movie_data = {
         'title': existing.title,
         'year': existing.year,

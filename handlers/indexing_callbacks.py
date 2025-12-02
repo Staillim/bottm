@@ -178,13 +178,24 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
             "tags": ""
         }
         
-        # Publicar en canal de verificación
+        # Verificar si ya existe (re-indexación)
+        existing = await db.get_video_by_message_id(msg_id)
+        
+        # Si es re-indexación, eliminar post antiguo del canal
+        if existing and existing.channel_message_id:
+            try:
+                from config.settings import VERIFICATION_CHANNEL_ID
+                await context.bot.delete_message(
+                    chat_id=VERIFICATION_CHANNEL_ID,
+                    message_id=existing.channel_message_id
+                )
+            except Exception as e:
+                print(f"⚠️ No se pudo eliminar mensaje antiguo del canal: {e}")
+        
+        # Publicar en canal de verificación (siempre publica nuevo)
         channel_msg = await publish_to_verification_channel(context, movie_data, msg_id)
         if channel_msg:
             video_data["channel_message_id"] = channel_msg.message_id
-        
-        # Verificar si ya existe (re-indexación)
-        existing = await db.get_video_by_message_id(msg_id)
         
         if existing:
             # Actualizar video existente
