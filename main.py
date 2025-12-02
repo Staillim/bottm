@@ -15,6 +15,9 @@ from handlers.admin import (
     indexar_command, stats_command, indexar_manual_command, 
     reindexar_command, handle_reindex_callback
 )
+from handlers.repost import (
+    repost_command, handle_repost_callback, handle_repost_channel_input
+)
 from handlers.text_handler import handle_text_message
 from handlers.callbacks import handle_callback
 from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command
@@ -39,7 +42,10 @@ async def help_command(update, context):
 /help - Mostrar esta ayuda
 
 *Comandos de Administración:*
-/indexar <película> - Indexar nueva película
+/indexar - Indexar nuevas películas automáticamente
+/indexar_manual <msg_id> - Indexar película específica
+/reindexar <msg_id> - Re-indexar película existente
+/repost - Re-publicar videos antiguos en nuevo canal
 /indexar_serie <serie> - Indexar nueva serie
 /terminar_indexacion - Finalizar indexación de serie
 /stats - Ver estadísticas del bot
@@ -77,6 +83,7 @@ def main():
     application.add_handler(CommandHandler("indexar", indexar_command))
     application.add_handler(CommandHandler("indexar_manual", indexar_manual_command))
     application.add_handler(CommandHandler("reindexar", reindexar_command))
+    application.add_handler(CommandHandler("repost", repost_command))
     application.add_handler(CommandHandler("indexar_serie", index_series_command))
     application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))
     application.add_handler(CommandHandler("stats", stats_command))
@@ -85,12 +92,16 @@ def main():
     application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(handle_indexing_callback, pattern="^idx_"))
     application.add_handler(CallbackQueryHandler(handle_reindex_callback, pattern="^ridx_"))
+    application.add_handler(CallbackQueryHandler(handle_repost_callback, pattern="^repost_"))
     application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(menu_|movie_|series_|season_|episode_)"))
     application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify_"))
     application.add_handler(CallbackQueryHandler(video_callback, pattern="^video_"))
     
     # Handler de mensajes de texto (búsqueda contextual)
     async def text_handler_with_auto_index(update, context):
+        # Intentar manejar input de canal para repost
+        await handle_repost_channel_input(update, context)
+        
         # Intentar manejar input de título para indexación
         if await handle_title_input(update, context):
             return  # Fue manejado por el sistema de indexación
