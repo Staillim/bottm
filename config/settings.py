@@ -8,6 +8,22 @@ BOT_USERNAME = os.getenv('BOT_USERNAME', 'CineStelar_bot')
 VERIFICATION_CHANNEL_ID = int(os.getenv('VERIFICATION_CHANNEL_ID'))
 VERIFICATION_CHANNEL_USERNAME = os.getenv('VERIFICATION_CHANNEL_USERNAME')
 STORAGE_CHANNEL_ID = int(os.getenv('STORAGE_CHANNEL_ID'))
+
+# Lista de canales donde publicar (separados por coma)
+# Puede ser vacío para solo usar VERIFICATION_CHANNEL_ID
+PUBLICATION_CHANNELS = [
+    int(id.strip()) 
+    for id in os.getenv('PUBLICATION_CHANNELS', '').split(',') 
+    if id.strip() and id.strip().lstrip('-').isdigit()
+]
+
+# Si no hay canales adicionales configurados, usar solo el de verificación
+if not PUBLICATION_CHANNELS:
+    PUBLICATION_CHANNELS = [VERIFICATION_CHANNEL_ID]
+elif VERIFICATION_CHANNEL_ID not in PUBLICATION_CHANNELS:
+    # Asegurar que el canal de verificación siempre esté incluido
+    PUBLICATION_CHANNELS.insert(0, VERIFICATION_CHANNEL_ID)
+
 DATABASE_URL = os.getenv('DATABASE_URL')
 TMDB_API_KEY = os.getenv('TMDB_API_KEY', '')
 ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',') if id.strip()]

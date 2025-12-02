@@ -442,17 +442,26 @@ async def stop_indexing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(stats_text, parse_mode='HTML')
 
 async def publish_to_verification_channel(context, movie_data, storage_msg_id):
-    """Publica película en canal de verificación con poster y botón de deep link"""
+    """
+    Publica película en todos los canales configurados con poster y botón de deep link
+    
+    Returns: Mensaje del primer canal (VERIFICATION_CHANNEL_ID) para guardar en BD
+    """
+    from config.settings import PUBLICATION_CHANNELS, VERIFICATION_CHANNEL_ID
+    import io
+    import requests as req
+    
     try:
         # Descargar poster
         poster_url = movie_data.get("poster_url")
         if not poster_url:
+            print(f"⚠️ No hay poster_url, abortando publicación")
             return None
         
+        print(f"📥 Descargando poster desde: {poster_url}")
         response = req.get(poster_url, timeout=10)
         response.raise_for_status()
-        photo = io.BytesIO(response.content)
-        photo.name = "poster.jpg"
+        photo_bytes = response.content
         
         # Crear caption
         title = movie_data.get("title", "Sin título")
@@ -469,20 +478,45 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id):
             f"{overview}"
         )
         
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton("▶️ Ver Ahora", url=f"https://t.me/{context.bot.username}?start=video_{storage_msg_id}")
         ]])
         
-        msg = await context.bot.send_photo(
-            chat_id=VERIFICATION_CHANNEL_ID,
-            photo=photo,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
+        print(f"📢 Publicando en {len(PUBLICATION_CHANNELS)} canal(es)...")
         
-        return msg
+        main_msg = None  # Mensaje del canal principal para retornar
+        
+        # Publicar en todos los canales
+        for idx, channel_id in enumerate(PUBLICATION_CHANNELS):
+            try:
+                # Crear nuevo BytesIO para cada envío (no se puede reutilizar)
+                photo = io.BytesIO(photo_bytes)
+                photo.name = "poster.jpg"
+                
+                msg = await context.bot.send_photo(
+                    chat_id=channel_id,
+                    photo=photo,
+                    caption=caption,
+                    parse_mode="HTML",
+                    reply_markup=keyboard
+                )
+                
+                print(f"✅ Publicado en canal {channel_id} (message_id: {msg.message_id})")
+                
+                # Guardar el mensaje del canal principal (verificación)
+                if channel_id == VERIFICATION_CHANNEL_ID:
+                    main_msg = msg
+                    
+            except Exception as e:
+                print(f"❌ Error publicando en canal {channel_id}: {e}")
+                continue
+        
+        return main_msg
         
     except Exception as e:
-        print(f"❌ Error publicando en canal: {e}")
+        print(f"❌ Error en publish_to_verification_channel: {e}")
+        import traceback
+        traceback.print_exc()
         return None
+
