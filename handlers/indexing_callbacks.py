@@ -142,11 +142,15 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
     msg_id = int(parts[2])
     tmdb_id = int(parts[3])
     
+    print(f"\n🔍 DEBUG save_confirmed_movie:")
+    print(f"   msg_id desde callback: {msg_id}")
+    
     session = indexing_sessions.get(user_id)
     if not session:
         await query.edit_message_text("❌ Sesión expirada.")
         return
     
+    print(f"   session.current_message_id: {session.current_message_id}")
     await query.edit_message_text("💾 Guardando...")
     
     try:
@@ -193,12 +197,15 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
                 print(f"⚠️ No se pudo eliminar mensaje antiguo del canal: {e}")
         
         # Publicar en canal de verificación (siempre publica nuevo)
+        print(f"   Publicando con storage_msg_id: {msg_id}")
         channel_msg = await publish_to_verification_channel(context, movie_data, msg_id)
         if channel_msg:
             video_data["channel_message_id"] = channel_msg.message_id
+            print(f"   channel_message_id del post: {channel_msg.message_id}")
         
         if existing:
             # Actualizar video existente
+            print(f"   Actualizando video existente con message_id: {msg_id}")
             await db.update_video(
                 message_id=msg_id,
                 title=video_data["title"],
@@ -215,6 +222,8 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
             action = "actualizado"
         else:
             # Guardar nuevo video en BD
+            print(f"   Insertando nuevo video con message_id: {msg_id}")
+            print(f"   Datos guardados: title={video_data['title']}, message_id={video_data['message_id']}, channel_message_id={video_data.get('channel_message_id')}")
             await db.add_video(**video_data)
             action = "guardado"
         

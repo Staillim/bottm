@@ -144,7 +144,10 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
     
     try:
         # Usar método existente optimizado
+        print(f"\n🔍 DEBUG send_video_by_message_id:")
+        print(f"   Buscando video con message_id: {video_msg_id}")
         video = await db.get_video_by_message_id(video_msg_id)
+        print(f"   Resultado: {video.title if video else 'None'}")
         
         if not video:
             await update.message.reply_text(
