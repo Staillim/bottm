@@ -11,11 +11,15 @@ from config.settings import BOT_TOKEN
 from database.db_manager import DatabaseManager
 from handlers.start import start_command, verify_callback
 from handlers.search import search_command, video_callback
-from handlers.admin import indexar_command, stats_command
+from handlers.admin import (
+    indexar_command, stats_command, indexar_manual_command, 
+    reindexar_command, handle_reindex_callback
+)
 from handlers.text_handler import handle_text_message
 from handlers.callbacks import handle_callback
 from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command
 from handlers.admin_menu import admin_menu_command, admin_callback_handler, process_new_episode
+from handlers.indexing_callbacks import handle_indexing_callback, handle_title_input
 
 # Configurar logging
 logging.basicConfig(
@@ -71,18 +75,26 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("admin", admin_menu_command))
     application.add_handler(CommandHandler("indexar", indexar_command))
+    application.add_handler(CommandHandler("indexar_manual", indexar_manual_command))
+    application.add_handler(CommandHandler("reindexar", reindexar_command))
     application.add_handler(CommandHandler("indexar_serie", index_series_command))
     application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))
     application.add_handler(CommandHandler("stats", stats_command))
     
     # Handlers de callbacks (nuevo sistema unificado tiene prioridad)
     application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
+    application.add_handler(CallbackQueryHandler(handle_indexing_callback, pattern="^idx_"))
+    application.add_handler(CallbackQueryHandler(handle_reindex_callback, pattern="^ridx_"))
     application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(menu_|movie_|series_|season_|episode_)"))
     application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify_"))
     application.add_handler(CallbackQueryHandler(video_callback, pattern="^video_"))
     
     # Handler de mensajes de texto (búsqueda contextual)
     async def text_handler_with_auto_index(update, context):
+        # Intentar manejar input de título para indexación
+        if await handle_title_input(update, context):
+            return  # Fue manejado por el sistema de indexación
+        
         # Procesar nuevo episodio si está activa la espera
         handled = await process_new_episode(update, context)
         if not handled:

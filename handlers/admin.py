@@ -2,12 +2,15 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from config.settings import ADMIN_IDS, STORAGE_CHANNEL_ID, VERIFICATION_CHANNEL_ID
 from utils.tmdb_api import TMDBApi
+from utils.title_cleaner import clean_title, format_title_with_year
+from handlers.indexing_callbacks import IndexingSession, indexing_sessions, show_search_results
 import io
 import requests as req
 import os
+import asyncio
 
 async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando para indexar videos - Empieza desde el último mensaje encontrado"""
+    """Comando mejorado para indexar videos - Proceso interactivo y eficiente"""
     user = update.effective_user
     
     # Verificar si es admin
@@ -17,136 +20,492 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = context.bot_data['db']
     
-    # Obtener último mensaje indexado desde la base de datos
+    # Crear sesión de indexación
+    session = IndexingSession(user.id)
+    indexing_sessions[user.id] = session
+    
+    # Obtener último mensaje indexado
     last_indexed_str = await db.get_config('last_indexed_message', '812')
     start_id = int(last_indexed_str)
     
-    await update.message.reply_text(f"🔄 Buscando desde mensaje {start_id}...")
+    # Mensaje inicial
+    initial_msg = await update.message.reply_text(
+        f"🔄 <b>Iniciando Indexación Mejorada</b>\n\n"
+        f"📍 Desde mensaje: {start_id}\n"
+        f"🎯 Modo: Interactivo con confirmación\n\n"
+        f"⏳ Escaneando canal...",
+        parse_mode='HTML'
+    )
     
-    indexed = 0
-    skipped = 0
-    empty_count = 0
-    ultimo_encontrado = start_id - 1  # Guardar el último mensaje NO vacío
+    session.progress_message_id = initial_msg.message_id
     
-    # Buscar hasta 2000 mensajes después del último (ajustable)
-    for msg_id in range(start_id, start_id + 2000):
-        try:
-            # Intentar obtener el mensaje
-            msg = await context.bot.forward_message(
-                chat_id=user.id,
-                from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=msg_id
-            )
+    tmdb = TMDBApi()
+    current_id = start_id
+    consecutive_empty = 0
+    max_empty = 10
+    max_scan = 2000
+    
+    try:
+        for offset in range(max_scan):
+            msg_id = start_id + offset
             
-            # Mensaje existe - resetear contador y actualizar último encontrado
-            empty_count = 0
-            ultimo_encontrado = msg_id
+            # Actualizar progreso cada 20 mensajes
+            if offset > 0 and offset % 20 == 0:
+                await context.bot.edit_message_text(
+                    chat_id=user.id,
+                    message_id=session.progress_message_id,
+                    text=(
+                        f"📊 <b>Progreso</b>\n\n"
+                        f"🔍 Escaneando: mensaje {msg_id}\n"
+                        f"✅ Indexados: {session.stats['indexed']}\n"
+                        f"⏭️ Saltados: {session.stats['skipped']}\n"
+                        f"❌ Errores: {session.stats['errors']}"
+                    ),
+                    parse_mode='HTML'
+                )
             
-            # Si tiene video, procesarlo
-            if msg.video:
-                title = msg.caption or f"Video {msg_id}"
-                print(f"\n{'='*60}")
-                print(f"🎬 Procesando: {title}")
-                print(f"   Message ID: {msg_id}")
+            # Verificar si la sesión fue detenida
+            if user.id not in indexing_sessions:
+                break
+            
+            try:
+                # Obtener mensaje sin forward (más eficiente)
+                # Usamos copy_message que es más ligero que forward
+                copied_msg = await context.bot.copy_message(
+                    chat_id=user.id,
+                    from_chat_id=STORAGE_CHANNEL_ID,
+                    message_id=msg_id
+                )
                 
-                # Verificar si ya está indexado
+                # Mensaje existe
+                consecutive_empty = 0
+                current_id = msg_id
+                
+                # Obtener el mensaje original para ver si tiene video
                 try:
-                    existing = await db.get_video_by_message_id(msg_id)
-                    if existing:
-                        print(f"⏭️  Ya indexado, saltando...")
-                        skipped += 1
-                        # Guardar progreso
-                        await db.set_config('last_indexed_message', msg_id + 1)
-                        await context.bot.delete_message(chat_id=user.id, message_id=msg.message_id)
-                        continue
-                except:
-                    pass
-                
-                # Buscar en TMDB
-                print(f"🔍 Buscando en TMDB: {title}")
-                tmdb = TMDBApi()
-                movie_data = tmdb.search_movie(title)
-                
-                if movie_data:
-                    print(f"✅ TMDB encontrado: {movie_data.get('title')} ({movie_data.get('year')})")
-                    print(f"   - TMDB ID: {movie_data.get('tmdb_id')}")
-                    print(f"   - Poster: {movie_data.get('poster_url', 'No poster')[:50]}...")
-                else:
-                    print(f"❌ No se encontró en TMDB")
-                
-                # Preparar datos para guardar
-                video_data = {
-                    "file_id": msg.video.file_id,
-                    "message_id": msg_id,
-                    "title": title,
-                    "description": "",
-                    "tags": ""
-                }
-                
-                # Si encontró en TMDB, agregar metadata
-                if movie_data:
-                    video_data.update({
-                        "title": movie_data.get("title"), # Actualizar título con el oficial de TMDB
-                        "tmdb_id": movie_data.get("tmdb_id"),
-                        "original_title": movie_data.get("original_title"),
-                        "year": movie_data.get("year"),
-                        "overview": movie_data.get("overview"),
-                        "poster_url": movie_data.get("poster_url"),
-                        "backdrop_url": movie_data.get("backdrop_url"),
-                        "vote_average": int(movie_data.get("vote_average", 0) * 10),
-                        "genres": ", ".join([str(g) for g in movie_data.get("genre_ids", [])])
-                    })
+                    # Intentar forward para obtener el objeto completo
+                    original_msg = await context.bot.forward_message(
+                        chat_id=user.id,
+                        from_chat_id=STORAGE_CHANNEL_ID,
+                        message_id=msg_id
+                    )
                     
-                    # Publicar en canal de verificación
+                    # Borrar mensajes temporales
                     try:
-                        print(f"📢 Intentando publicar en canal: {title}")
-                        channel_msg = await publish_to_verification_channel(
-                            context, movie_data, msg_id
+                        await context.bot.delete_message(chat_id=user.id, message_id=copied_msg.message_id)
+                        await context.bot.delete_message(chat_id=user.id, message_id=original_msg.message_id)
+                    except:
+                        pass
+                    
+                    # Procesar solo si tiene video
+                    if original_msg.video:
+                        # Verificar si ya está indexado
+                        existing = await db.get_video_by_message_id(msg_id)
+                        if existing:
+                            session.stats['skipped'] += 1
+                            await db.set_config('last_indexed_message', str(msg_id + 1))
+                            continue
+                        
+                        # NUEVO FLUJO: Procesar con confirmación
+                        await process_video_with_confirmation(
+                            update, context, original_msg, msg_id, tmdb, db, session
                         )
-                        if channel_msg:
-                            video_data["channel_message_id"] = channel_msg.message_id
-                            print(f"✅ Publicado en canal con message_id: {channel_msg.message_id}")
-                        else:
-                            print(f"⚠️ No se pudo publicar en canal (función retornó None)")
-                    except Exception as e:
-                        print(f"❌ Error publicando en canal: {e}")
-                        import traceback
-                        traceback.print_exc()
-                else:
-                    print(f"⚠️ No se encontró metadata en TMDB para: {title}")
+                        
+                        # Guardar progreso
+                        await db.set_config('last_indexed_message', str(msg_id + 1))
+                        
+                        # Pausa para dar tiempo al admin de confirmar
+                        # El flujo continúa después de la confirmación
+                        return  # Detener aquí, continuar manualmente o en siguiente comando
+                        
+                except Exception as e:
+                    # Error obteniendo mensaje original
+                    try:
+                        await context.bot.delete_message(chat_id=user.id, message_id=copied_msg.message_id)
+                    except:
+                        pass
+                    continue
+                    
+            except Exception:
+                # Mensaje no existe
+                consecutive_empty += 1
                 
-                # Agregar video a la base de datos
-                await db.add_video(**video_data)
-                indexed += 1
-                
-                # Guardar progreso después de cada video indexado
-                await db.set_config('last_indexed_message', msg_id + 1)
-            
-            # Borrar mensaje temporal
+                if consecutive_empty >= max_empty:
+                    break
+        
+        # Finalizar sesión
+        await finalize_indexing(update, context, session, current_id, db)
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error durante indexación: {str(e)}")
+        if user.id in indexing_sessions:
+            del indexing_sessions[user.id]
+
+async def process_video_with_confirmation(update, context, msg, msg_id, tmdb, db, session):
+    """Procesa un video con flujo de confirmación interactivo"""
+    user_id = update.effective_user.id
+    title = msg.caption or f"Video {msg_id}"
+    
+    # Limpiar título
+    cleaned, year = clean_title(title)
+    
+    # Guardar datos del video en sesión
+    session.current_message_id = msg_id
+    session.current_video_data = {
+        'file_id': msg.video.file_id,
+        'original_caption': title,
+        'cleaned_title': cleaned,
+        'year': year
+    }
+    
+    # Buscar en TMDB
+    results = tmdb.search_movie(cleaned, year=year, return_multiple=True, limit=5)
+    
+    if not results:
+        # NO SE ENCONTRÓ - Pedir confirmación
+        keyboard = [
+            [InlineKeyboardButton("✏️ Editar título", callback_data=f"idx_edit_{msg_id}")],
+            [InlineKeyboardButton("⏭️ Saltar video", callback_data=f"idx_skip_{msg_id}")],
+            [InlineKeyboardButton("🛑 Detener indexación", callback_data="idx_stop")]
+        ]
+        
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                f"❓ <b>No encontrado en TMDB</b>\n\n"
+                f"📝 Título original: <code>{title}</code>\n"
+                f"🧹 Título limpio: <code>{cleaned}</code>\n"
+                f"📅 Año detectado: {year or 'N/A'}\n\n"
+                f"¿Qué quieres hacer?"
+            ),
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        session.search_results = []
+        return
+    
+    # SE ENCONTRÓ - Verificar confianza
+    best_match = results[0]
+    confidence = best_match.get('confidence', 0)
+    
+    session.search_results = results
+    
+    if confidence >= 80:
+        # Alta confianza - Confirmar directamente
+        keyboard = [
+            [InlineKeyboardButton("✅ Correcto", callback_data=f"idx_confirm_{msg_id}_{best_match['tmdb_id']}")],
+            [InlineKeyboardButton("❌ Ver más opciones", callback_data=f"idx_edit_{msg_id}")],
+            [InlineKeyboardButton("⏭️ Saltar", callback_data=f"idx_skip_{msg_id}")]
+        ]
+        
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                f"🎯 <b>Match encontrado</b> (Confianza: {confidence:.0f}%)\n\n"
+                f"🎬 <b>{best_match['title']}</b> ({best_match['year']})\n"
+                f"⭐ {best_match['vote_average']}/10\n"
+                f"🆔 TMDB ID: {best_match['tmdb_id']}\n\n"
+                f"📝 {best_match.get('overview', '')[:150]}...\n\n"
+                f"¿Es correcto?"
+            ),
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        # Confianza media/baja - Mostrar opciones
+        await show_search_results(update, context, msg_id, results, cleaned)
+
+async def finalize_indexing(update, context, session, last_msg_id, db):
+    """Finaliza el proceso de indexación"""
+    user_id = update.effective_user.id
+    
+    await db.set_config('last_indexed_message', str(last_msg_id + 1))
+    
+    final_text = (
+        f"✅ <b>Indexación Completada</b>\n\n"
+        f"📊 <b>Resumen:</b>\n"
+        f"✅ Indexados: {session.stats['indexed']}\n"
+        f"⏭️ Saltados: {session.stats['skipped']}\n"
+        f"❌ Errores: {session.stats['errors']}\n\n"
+        f"📍 Último mensaje: {last_msg_id}\n"
+        f"💾 Progreso guardado: {last_msg_id + 1}"
+    )
+    
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=final_text,
+        parse_mode='HTML'
+    )
+    
+    # Limpiar sesión
+    if user_id in indexing_sessions:
+        del indexing_sessions[user_id]
+
+async def indexar_manual_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Indexa un mensaje específico del canal de almacenamiento
+    
+    Uso: /indexar_manual <message_id>
+    Ejemplo: /indexar_manual 1523
+    """
+    user = update.effective_user
+    
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+        return
+    
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "❌ <b>Uso incorrecto</b>\n\n"
+            "Formato: <code>/indexar_manual {message_id}</code>\n"
+            "Ejemplo: <code>/indexar_manual 1523</code>",
+            parse_mode='HTML'
+        )
+        return
+    
+    msg_id = int(context.args[0])
+    db = context.bot_data['db']
+    
+    # Verificar si ya está indexado
+    existing = await db.get_video_by_message_id(msg_id)
+    if existing:
+        await update.message.reply_text(
+            f"⚠️ El mensaje {msg_id} ya está indexado:\n\n"
+            f"🎬 <b>{existing.title}</b> ({existing.year})\n"
+            f"🆔 TMDB ID: {existing.tmdb_id}\n\n"
+            f"Usa /reindexar {msg_id} para re-procesar.",
+            parse_mode='HTML'
+        )
+        return
+    
+    await update.message.reply_text(f"🔍 Obteniendo mensaje {msg_id}...")
+    
+    try:
+        # Obtener mensaje
+        msg = await context.bot.forward_message(
+            chat_id=user.id,
+            from_chat_id=STORAGE_CHANNEL_ID,
+            message_id=msg_id
+        )
+        
+        if not msg.video:
+            await update.message.reply_text(f"❌ El mensaje {msg_id} no contiene un video.")
             try:
                 await context.bot.delete_message(chat_id=user.id, message_id=msg.message_id)
             except:
                 pass
-                
-        except Exception:
-            # Mensaje no existe - incrementar contador
-            empty_count += 1
-            
-            # Si encuentra 10 mensajes vacíos seguidos, detener
-            if empty_count >= 10:
-                break
+            return
+        
+        # Borrar forward temporal
+        try:
+            await context.bot.delete_message(chat_id=user.id, message_id=msg.message_id)
+        except:
+            pass
+        
+        # Crear sesión de indexación
+        session = IndexingSession(user.id)
+        indexing_sessions[user.id] = session
+        
+        # Procesar con confirmación
+        tmdb = TMDBApi()
+        await process_video_with_confirmation(
+            update, context, msg, msg_id, tmdb, db, session
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error al obtener mensaje {msg_id}: {str(e)}")
+
+async def reindexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Re-indexa un video ya existente en la base de datos
     
-    # Guardar el último mensaje procesado
-    await db.set_config('last_indexed_message', ultimo_encontrado + 1)
+    Uso: /reindexar <message_id>
+    Ejemplo: /reindexar 1523
+    """
+    user = update.effective_user
+    
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+        return
+    
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text(
+            "❌ <b>Uso incorrecto</b>\n\n"
+            "Formato: <code>/reindexar {message_id}</code>\n"
+            "Ejemplo: <code>/reindexar 1523</code>",
+            parse_mode='HTML'
+        )
+        return
+    
+    msg_id = int(context.args[0])
+    db = context.bot_data['db']
+    
+    # Verificar que existe
+    existing = await db.get_video_by_message_id(msg_id)
+    if not existing:
+        await update.message.reply_text(
+            f"❌ El mensaje {msg_id} no está en la base de datos.\n"
+            f"Usa /indexar_manual {msg_id} para indexarlo."
+        )
+        return
+    
+    # Mostrar info actual
+    current_info = (
+        f"📊 <b>Video Actual en BD:</b>\n\n"
+        f"🎬 <b>{existing.title}</b>\n"
+        f"📅 Año: {existing.year or 'N/A'}\n"
+        f"🆔 TMDB ID: {existing.tmdb_id or 'N/A'}\n"
+        f"⭐ Rating: {existing.vote_average/10 if existing.vote_average else 'N/A'}/10\n\n"
+        f"¿Qué quieres hacer?"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🔄 Re-buscar en TMDB", callback_data=f"ridx_research_{msg_id}")],
+        [InlineKeyboardButton("✏️ Buscar con nuevo título", callback_data=f"ridx_newtitle_{msg_id}")],
+        [InlineKeyboardButton("📢 Re-publicar en canal", callback_data=f"ridx_republish_{msg_id}")],
+        [InlineKeyboardButton("🗑️ Eliminar de BD", callback_data=f"ridx_delete_{msg_id}")],
+        [InlineKeyboardButton("❌ Cancelar", callback_data="ridx_cancel")]
+    ]
     
     await update.message.reply_text(
-        f"✅ Indexación completa:\n\n"
-        f"📹 Videos nuevos: {indexed}\n"
-        f"⏭️ Ya existentes: {skipped}\n"
-        f"📊 Total: {indexed + skipped} videos\n"
-        f"🔚 Último mensaje: {ultimo_encontrado}\n"
-        f"💾 Guardado en BD: {ultimo_encontrado + 1}"
+        current_info,
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+async def handle_reindex_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja callbacks de re-indexación"""
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data == "ridx_cancel":
+        await query.edit_message_text("❌ Cancelado.")
+        return
+    
+    # ridx_research_{msg_id}
+    if data.startswith('ridx_research_'):
+        msg_id = int(data.split('_')[2])
+        await reindex_search_tmdb(update, context, msg_id)
+    
+    # ridx_newtitle_{msg_id}
+    elif data.startswith('ridx_newtitle_'):
+        msg_id = int(data.split('_')[2])
+        await reindex_request_new_title(update, context, msg_id)
+    
+    # ridx_republish_{msg_id}
+    elif data.startswith('ridx_republish_'):
+        msg_id = int(data.split('_')[2])
+        await reindex_republish(update, context, msg_id)
+    
+    # ridx_delete_{msg_id}
+    elif data.startswith('ridx_delete_'):
+        msg_id = int(data.split('_')[2])
+        await reindex_delete(update, context, msg_id)
+
+async def reindex_search_tmdb(update, context, msg_id):
+    """Re-busca en TMDB con el título actual"""
+    query = update.callback_query
+    db = context.bot_data['db']
+    
+    existing = await db.get_video_by_message_id(msg_id)
+    if not existing:
+        await query.edit_message_text("❌ Video no encontrado en BD.")
+        return
+    
+    await query.edit_message_text(f"🔍 Buscando en TMDB: <b>{existing.title}</b>...", parse_mode='HTML')
+    
+    # Crear sesión temporal
+    user_id = update.effective_user.id
+    session = IndexingSession(user_id)
+    session.current_message_id = msg_id
+    session.current_video_data = {'file_id': existing.file_id}
+    indexing_sessions[user_id] = session
+    
+    # Buscar
+    tmdb = TMDBApi()
+    cleaned, year = clean_title(existing.title)
+    results = tmdb.search_movie(cleaned, year=year, return_multiple=True, limit=5)
+    
+    if not results:
+        await query.edit_message_text(
+            f"❌ No se encontraron resultados para: <b>{existing.title}</b>",
+            parse_mode='HTML'
+        )
+        return
+    
+    session.search_results = results
+    await show_search_results(update, context, msg_id, results, existing.title)
+
+async def reindex_request_new_title(update, context, msg_id):
+    """Solicita nuevo título para buscar"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    session = IndexingSession(user_id)
+    session.current_message_id = msg_id
+    session.awaiting_title_input = True
+    indexing_sessions[user_id] = session
+    
+    await query.edit_message_text(
+        "✏️ <b>Buscar con nuevo título</b>\n\n"
+        "Envía el título correcto de la película.\n"
+        "Ejemplo: <code>Avengers Endgame (2019)</code>",
+        parse_mode='HTML'
+    )
+
+async def reindex_republish(update, context, msg_id):
+    """Re-publica la película en el canal"""
+    query = update.callback_query
+    db = context.bot_data['db']
+    
+    existing = await db.get_video_by_message_id(msg_id)
+    if not existing:
+        await query.edit_message_text("❌ Video no encontrado.")
+        return
+    
+    await query.edit_message_text("📢 Publicando en canal...")
+    
+    movie_data = {
+        'title': existing.title,
+        'year': existing.year,
+        'vote_average': existing.vote_average / 10 if existing.vote_average else 0,
+        'overview': existing.overview or '',
+        'poster_url': existing.poster_url,
+        'tmdb_id': existing.tmdb_id
+    }
+    
+    from handlers.indexing_callbacks import publish_to_verification_channel
+    channel_msg = await publish_to_verification_channel(context, movie_data, msg_id)
+    
+    if channel_msg:
+        # Actualizar channel_message_id
+        await db.execute(
+            "UPDATE videos SET channel_message_id = :msg_id WHERE message_id = :video_msg_id",
+            {"msg_id": channel_msg.message_id, "video_msg_id": msg_id}
+        )
+        await query.edit_message_text(f"✅ Publicado en canal (message_id: {channel_msg.message_id})")
+    else:
+        await query.edit_message_text("❌ Error al publicar en canal.")
+
+async def reindex_delete(update, context, msg_id):
+    """Elimina el video de la base de datos"""
+    query = update.callback_query
+    db = context.bot_data['db']
+    
+    # Confirmar
+    keyboard = [
+        [InlineKeyboardButton("✅ Sí, eliminar", callback_data=f"ridx_delete_confirm_{msg_id}")],
+        [InlineKeyboardButton("❌ No, cancelar", callback_data="ridx_cancel")]
+    ]
+    
+    await query.edit_message_text(
+        f"⚠️ <b>¿Seguro que quieres eliminar el video {msg_id} de la BD?</b>\n\n"
+        f"Esta acción NO se puede deshacer.",
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
 
 async def publish_to_verification_channel(context, movie_data, storage_msg_id):
     """Publica película en canal de verificación con poster y botón de deep link"""

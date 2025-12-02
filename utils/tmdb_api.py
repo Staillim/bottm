@@ -8,43 +8,113 @@ class TMDBApi:
     def __init__(self):
         self.api_key = TMDB_API_KEY
     
-    def search_movie(self, title):
-        """Busca una película por título - Primero en español, luego en inglés"""
+    def search_movie(self, title, year=None, return_multiple=False, limit=5):
+        """
+        Busca una película por título - Primero en español, luego en inglés
+        
+        Args:
+            title: Título de la película
+            year: Año (opcional, mejora precisión)
+            return_multiple: Si True, retorna lista de resultados. Si False, solo el primero
+            limit: Número máximo de resultados cuando return_multiple=True
+            
+        Returns:
+            Si return_multiple=False: dict con datos de película o None
+            Si return_multiple=True: lista de dicts con resultados ordenados por relevancia
+        """
         try:
-            # Extraer año si está presente (ej: "Thor (2022)" -> "Thor", "2022")
-            year = None
-            clean_title = title
-            if "(" in title and ")" in title:
-                parts = title.split("(")
-                clean_title = parts[0].strip()
-                year_text = parts[1].split(")")[0].strip()
-                if year_text.isdigit():
-                    year = year_text
+            # 1. Buscar en español con año
+            results = self._search_with_language(title, "es-ES", year, return_all=True)
             
-            # 1. Intentar buscar en español
-            result = self._search_with_language(clean_title, "es-ES", year)
-            if result:
-                return result
+            # 2. Si no encuentra suficientes, buscar en inglés
+            if len(results) < limit:
+                en_results = self._search_with_language(title, "en-US", year, return_all=True)
+                # Agregar resultados en inglés que no estén duplicados
+                existing_ids = {r['tmdb_id'] for r in results}
+                for r in en_results:
+                    if r['tmdb_id'] not in existing_ids:
+                        results.append(r)
+                        if len(results) >= limit:
+                            break
             
-            # 2. Si no encuentra en español, buscar en inglés
-            result = self._search_with_language(clean_title, "en-US", year)
-            if result:
-                return result
+            # 3. Si aún no encuentra y había año, intentar sin año
+            if len(results) == 0 and year:
+                results = self._search_with_language(title, "es-ES", None, return_all=True)
+                if len(results) < limit:
+                    en_results = self._search_with_language(title, "en-US", None, return_all=True)
+                    existing_ids = {r['tmdb_id'] for r in results}
+                    for r in en_results:
+                        if r['tmdb_id'] not in existing_ids:
+                            results.append(r)
+                            if len(results) >= limit:
+                                break
             
-            # 3. Último intento sin año
-            if year:
-                result = self._search_with_language(clean_title, "es-ES", None)
-                if result:
-                    return result
+            # Calcular score de confianza para cada resultado
+            for result in results:
+                result['confidence'] = self._calculate_confidence(title, year, result)
             
-            return None
+            # Ordenar por confianza
+            results.sort(key=lambda x: x['confidence'], reverse=True)
+            
+            if return_multiple:
+                return results[:limit]
+            else:
+                return results[0] if results else None
             
         except Exception as e:
             print(f"Error buscando película: {e}")
-            return None
+            return [] if return_multiple else None
     
-    def _search_with_language(self, title, language, year=None):
-        """Busca en un idioma específico"""
+    def _calculate_confidence(self, search_title, search_year, result):
+        """
+        Calcula un score de confianza (0-100) basado en similitud de título y año
+        """
+        score = 0
+        
+        # Score por popularidad (0-30 puntos)
+        popularity = result.get('popularity', 0)
+        score += min(30, popularity / 10)
+        
+        # Score por coincidencia de año (0-30 puntos)
+        if search_year and result.get('year'):
+            try:
+                if int(search_year) == int(result['year']):
+                    score += 30
+                elif abs(int(search_year) - int(result['year'])) == 1:
+                    score += 15  # Año cercano
+            except:
+                pass
+        
+        # Score por similitud de título (0-40 puntos)
+        search_lower = search_title.lower().strip()
+        title_lower = result.get('title', '').lower().strip()
+        original_lower = result.get('original_title', '').lower().strip()
+        
+        # Coincidencia exacta
+        if search_lower == title_lower or search_lower == original_lower:
+            score += 40
+        # Coincidencia parcial
+        elif search_lower in title_lower or title_lower in search_lower:
+            score += 30
+        elif search_lower in original_lower or original_lower in search_lower:
+            score += 25
+        # Palabras en común
+        else:
+            search_words = set(search_lower.split())
+            title_words = set(title_lower.split())
+            common_words = search_words & title_words
+            if common_words:
+                score += 20 * (len(common_words) / max(len(search_words), 1))
+        
+        return min(100, score)
+    
+    def _search_with_language(self, title, language, year=None, return_all=False):
+        """
+        Busca en un idioma específico
+        
+        Args:
+            return_all: Si True, retorna lista de todos los resultados. Si False, solo el primero
+        """
         try:
             url = f"{self.BASE_URL}/search/movie"
             params = {
@@ -62,12 +132,15 @@ class TMDBApi:
             data = response.json()
             
             if data["results"]:
-                return self._format_movie_data(data["results"][0])
-            return None
+                if return_all:
+                    return [self._format_movie_data(movie) for movie in data["results"][:10]]
+                else:
+                    return self._format_movie_data(data["results"][0])
+            return [] if return_all else None
             
         except Exception as e:
             print(f"Error en búsqueda ({language}): {e}")
-            return None
+            return [] if return_all else None
     
     def _format_movie_data(self, movie):
         """Formatea los datos de la película"""
