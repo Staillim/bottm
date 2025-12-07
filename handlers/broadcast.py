@@ -385,16 +385,16 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
         elif session.message_type == 'thanks':
-        message_text = (
-            "🙏 <b>¡Gracias por usar CineStelar!</b>\n\n"
-            "Esperamos que hayas disfrutado tu película o serie. "
-            "Tu apoyo nos motiva a seguir mejorando.\n\n"
-            "Si tienes alguna sugerencia o quieres solicitar contenido, "
-            "¡no dudes en contactarnos!\n\n"
-            "🌟 ¡Hasta la próxima! 🌟"
-        )
-        reply_markup = None
-    else:  # custom
+            message_text = (
+                "🙏 <b>¡Gracias por usar CineStelar!</b>\n\n"
+                "Esperamos que hayas disfrutado tu película o serie. "
+                "Tu apoyo nos motiva a seguir mejorando.\n\n"
+                "Si tienes alguna sugerencia o quieres solicitar contenido, "
+                "¡no dudes en contactarnos!\n\n"
+                "🌟 ¡Hasta la próxima! 🌟"
+            )
+            reply_markup = None
+        else:  # custom
         message_text = session.custom_message
         # Crear botones personalizados si existen
         if session.custom_buttons:
