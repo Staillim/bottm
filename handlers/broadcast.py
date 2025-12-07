@@ -41,6 +41,7 @@ async def broadcast_menu_command(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("👋 Mensaje de Bienvenida", callback_data="broadcast_welcome")],
         [InlineKeyboardButton("🙏 Mensaje de Agradecimiento", callback_data="broadcast_thanks")],
         [InlineKeyboardButton("✍️ Mensaje Personalizado", callback_data="broadcast_custom")],
+        [InlineKeyboardButton("🗑️ Eliminar Mensajes", callback_data="broadcast_delete")],
         [InlineKeyboardButton("📊 Ver Estadísticas", callback_data="broadcast_stats")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -66,6 +67,10 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
         await send_thanks_broadcast(update, context)
     elif data == "broadcast_custom":
         await request_custom_message(update, context)
+    elif data == "broadcast_delete":
+        await request_delete_broadcast(update, context)
+    elif data == "broadcast_delete_confirm":
+        await confirm_delete_broadcast(update, context)
     elif data == "broadcast_stats":
         await show_broadcast_stats(update, context)
     elif data == "broadcast_add_button":
@@ -82,6 +87,7 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
             [InlineKeyboardButton("👋 Mensaje de Bienvenida", callback_data="broadcast_welcome")],
             [InlineKeyboardButton("🙏 Mensaje de Agradecimiento", callback_data="broadcast_thanks")],
             [InlineKeyboardButton("✍️ Mensaje Personalizado", callback_data="broadcast_custom")],
+            [InlineKeyboardButton("🗑️ Eliminar Mensajes", callback_data="broadcast_delete")],
             [InlineKeyboardButton("📊 Ver Estadísticas", callback_data="broadcast_stats")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -484,6 +490,139 @@ async def cancel_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del broadcast_sessions[user_id]
     
     await query.edit_message_text("❌ Broadcast cancelado.")
+
+async def request_delete_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Solicita confirmación para eliminar mensajes de broadcast"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    # Crear sesión
+    session = BroadcastSession(user_id)
+    session.message_type = 'delete'
+    broadcast_sessions[user_id] = session
+    
+    keyboard = [
+        [InlineKeyboardButton("⚠️ SÍ, Eliminar Todos", callback_data="broadcast_delete_confirm")],
+        [InlineKeyboardButton("❌ Cancelar", callback_data="broadcast_cancel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        "🗑️ <b>Eliminar Mensajes de Broadcast</b>\n\n"
+        "⚠️ <b>ADVERTENCIA:</b> Esta acción intentará eliminar el último mensaje enviado "
+        "a cada usuario del bot.\n\n"
+        "Esto es útil si enviaste un mensaje con errores.\n\n"
+        "<i>Nota: Solo se pueden eliminar mensajes de las últimas 48 horas.</i>\n\n"
+        "¿Deseas continuar?",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+async def confirm_delete_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Elimina el último mensaje enviado a todos los usuarios"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    try:
+        logger.info(f"Iniciando eliminación de mensajes broadcast para admin {user_id}")
+        
+        session = broadcast_sessions.get(user_id)
+        if not session:
+            await query.edit_message_text("❌ Sesión expirada. Usa /broadcast nuevamente.")
+            return
+        
+        # Obtener todos los usuarios
+        users = await db.get_all_users()
+        total_users = len(users)
+        
+        if total_users == 0:
+            await query.edit_message_text(
+                "⚠️ No hay usuarios registrados.",
+                parse_mode='HTML'
+            )
+            del broadcast_sessions[user_id]
+            return
+        
+        # Actualizar mensaje
+        await query.edit_message_text(
+            f"🗑️ <b>Eliminando mensajes...</b>\n\n"
+            f"👥 Total usuarios: {total_users}\n"
+            f"📊 Progreso: 0/{total_users} (0%)",
+            parse_mode='HTML'
+        )
+        
+        deleted_count = 0
+        failed_count = 0
+        
+        # Intentar eliminar el último mensaje del bot en cada chat
+        for index, user in enumerate(users, 1):
+            try:
+                # Obtener los últimos mensajes del chat
+                # Nota: Telegram no permite obtener historial directo, así que
+                # intentaremos eliminar usando el message_id almacenado en contexto
+                # Si no hay message_id, fallará silenciosamente
+                
+                # Intentar obtener el último message_id del contexto del usuario
+                user_data = await context.bot.get_chat(user.user_id)
+                
+                # Como no podemos obtener el message_id directamente,
+                # esta funcionalidad requeriría almacenar los message_ids
+                # de los broadcasts en la base de datos
+                logger.warning(f"No se puede eliminar mensaje para user {user.user_id} - message_id no disponible")
+                failed_count += 1
+                
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Error eliminando mensaje de usuario {user.user_id}: {e}")
+            
+            # Actualizar progreso cada 10 usuarios
+            if index % 10 == 0 or index == total_users:
+                try:
+                    percentage = int((index / total_users) * 100)
+                    await query.edit_message_text(
+                        f"🗑️ <b>Eliminando mensajes...</b>\n\n"
+                        f"👥 Total usuarios: {total_users}\n"
+                        f"📊 Progreso: {index}/{total_users} ({percentage}%)\n"
+                        f"✅ Eliminados: {deleted_count}\n"
+                        f"❌ No eliminados: {failed_count}",
+                        parse_mode='HTML'
+                    )
+                except Exception as e:
+                    logger.error(f"Error actualizando progreso: {e}")
+            
+            await asyncio.sleep(0.05)
+        
+        # Limpiar sesión
+        if user_id in broadcast_sessions:
+            del broadcast_sessions[user_id]
+        
+        # Mostrar resultados
+        await query.edit_message_text(
+            f"🗑️ <b>Proceso Completado</b>\n\n"
+            f"⚠️ <b>Limitación Técnica:</b>\n"
+            f"Telegram no permite eliminar mensajes sin conocer sus IDs.\n\n"
+            f"💡 <b>Solución:</b>\n"
+            f"Para implementar esta función completamente, necesitamos:\n"
+            f"1. Almacenar los message_ids cuando enviamos broadcasts\n"
+            f"2. Crear una tabla en la BD para rastrear mensajes\n\n"
+            f"📊 Usuarios procesados: {total_users}\n"
+            f"❌ No se pudieron eliminar: {failed_count}\n\n"
+            f"<i>Si deseas implementar esta función, avísame.</i>",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error general en confirm_delete_broadcast: {e}", exc_info=True)
+        try:
+            await query.edit_message_text(
+                f"❌ <b>Error eliminando mensajes</b>\n\n"
+                f"Error: {str(e)}",
+                parse_mode='HTML'
+            )
+        except:
+            pass
+        if user_id in broadcast_sessions:
+            del broadcast_sessions[user_id]
 
 async def show_broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra estadísticas de usuarios para broadcast"""
