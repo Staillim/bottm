@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select, or_, func, update
-from .models import Base, User, Video, Search, Favorite, AdToken, BotConfig, TvShow, Episode, UserNavigationState, UserPoints, Referral, PointsTransaction
+from .models import Base, User, Video, Search, Favorite, AdToken, BotConfig, TvShow, Episode, UserNavigationState
 from config.settings import DATABASE_URL
 import unicodedata
 import secrets
