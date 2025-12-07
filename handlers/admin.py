@@ -8,6 +8,9 @@ import io
 import requests as req
 import os
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando mejorado para indexar videos - Proceso interactivo y eficiente"""

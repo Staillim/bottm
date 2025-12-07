@@ -60,10 +60,6 @@ async def handle_indexing_callback(update: Update, context: ContextTypes.DEFAULT
     elif data.startswith('idx_select_'):
         await select_from_results(update, context, data)
     
-    # idx_retry_{msg_id} - Reintentar búsqueda con título original
-    elif data.startswith('idx_retry_'):
-        await retry_search(update, context, data)
-    
     # idx_save_{msg_id}_{tmdb_id} - Guardar confirmado
     elif data.startswith('idx_save_'):
         await save_confirmed_movie(update, context, data)

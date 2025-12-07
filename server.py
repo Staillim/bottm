@@ -293,20 +293,16 @@ def health():
     return jsonify({'status': 'ok', 'service': 'CineStelar WebApp Server'})
 
 def run_telegram_bot():
-    """Ejecuta el bot de Telegram en un hilo separado"""
+    """Ejecuta el bot de Telegram directamente importando main.py"""
     try:
         print("🤖 Iniciando Bot de Telegram...")
-        import subprocess
-        # Usar Popen o run sin capture_output para ver logs en tiempo real
-        # sys.stdout y sys.stderr se heredan por defecto
-        result = subprocess.run([sys.executable, "main.py"], text=True)
-        
-        if result.returncode != 0:
-            print(f"❌ Error en bot (código {result.returncode})")
-        else:
-            print("✅ Bot finalizado correctamente")
+        # Importar y ejecutar main directamente
+        from main import main as telegram_main
+        telegram_main()
     except Exception as e:
         print(f"❌ Error ejecutando bot: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     # Inicializar base de datos
