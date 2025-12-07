@@ -4,7 +4,7 @@ Sistema de broadcast para enviar mensajes a usuarios
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 from database.db_manager import DatabaseManager
-from config.settings import ADMIN_IDS, VERIFICATION_CHANNEL_ID
+from config.settings import ADMIN_IDS, VERIFICATION_CHANNEL_ID, VERIFICATION_CHANNEL_USERNAME
 import logging
 import asyncio
 
@@ -370,21 +370,21 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Determinar mensaje a enviar
         logger.info(f"Determinando mensaje para tipo: {session.message_type}")
         if session.message_type == 'welcome':
-        message_text = (
-            "👋 <b>¡Hola! ¿Estás aburrido?</b>\n\n"
-            "¿Qué quieres ver hoy? Tenemos varias opciones para ti:\n\n"
-            "🔍 Usa /buscar para encontrar películas o series\n"
-            "📺 Visita nuestro canal de verificación para ver el catálogo completo\n"
-            "💡 ¿No encuentras algo? ¡Solicita una nueva película o serie!\n\n"
-            "¡Disfruta! 🍿"
-        )
-        # Botones interactivos
-        keyboard = [
-            [InlineKeyboardButton("🔍 Buscar Ahora", switch_inline_query_current_chat="")],
-            [InlineKeyboardButton("📺 Ver Catálogo", url=f"https://t.me/{VERIFICATION_CHANNEL_ID.replace('@', '')}")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-    elif session.message_type == 'thanks':
+            message_text = (
+                "👋 <b>¡Hola! ¿Estás aburrido?</b>\n\n"
+                "¿Qué quieres ver hoy? Tenemos varias opciones para ti:\n\n"
+                "🔍 Usa /buscar para encontrar películas o series\n"
+                "📺 Visita nuestro canal de verificación para ver el catálogo completo\n"
+                "💡 ¿No encuentras algo? ¡Solicita una nueva película o serie!\n\n"
+                "¡Disfruta! 🍿"
+            )
+            # Botones interactivos
+            keyboard = [
+                [InlineKeyboardButton("🔍 Buscar Ahora", switch_inline_query_current_chat="")],
+                [InlineKeyboardButton("📺 Ver Catálogo", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        elif session.message_type == 'thanks':
         message_text = (
             "🙏 <b>¡Gracias por usar CineStelar!</b>\n\n"
             "Esperamos que hayas disfrutado tu película o serie. "
