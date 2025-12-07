@@ -329,37 +329,47 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
     
-    session = broadcast_sessions.get(user_id)
-    if not session:
-        await query.edit_message_text("❌ Sesión expirada. Usa /broadcast nuevamente.")
-        return
-    
-    # Obtener todos los usuarios primero
     try:
-        users = await db.get_all_users()
-        total_users = len(users)
+        logger.info(f"Iniciando broadcast para user {user_id}")
         
-        if total_users == 0:
+        session = broadcast_sessions.get(user_id)
+        if not session:
+            logger.warning(f"No hay sesión para user {user_id}")
+            await query.edit_message_text("❌ Sesión expirada. Usa /broadcast nuevamente.")
+            return
+        
+        logger.info(f"Sesión encontrada, tipo: {session.message_type}")
+        
+        # Obtener todos los usuarios primero
+        try:
+            logger.info("Obteniendo lista de usuarios...")
+            users = await db.get_all_users()
+            total_users = len(users)
+            logger.info(f"Usuarios encontrados: {total_users}")
+            
+            if total_users == 0:
+                await query.edit_message_text(
+                    "⚠️ <b>No hay usuarios registrados</b>\n\n"
+                    "El bot aún no tiene usuarios en la base de datos.",
+                    parse_mode='HTML'
+                )
+                del broadcast_sessions[user_id]
+                return
+                
+        except Exception as e:
+            logger.error(f"Error obteniendo usuarios: {e}", exc_info=True)
             await query.edit_message_text(
-                "⚠️ <b>No hay usuarios registrados</b>\n\n"
-                "El bot aún no tiene usuarios en la base de datos.",
+                f"❌ <b>Error obteniendo usuarios</b>\n\n"
+                f"Error: {str(e)}",
                 parse_mode='HTML'
             )
-            del broadcast_sessions[user_id]
+            if user_id in broadcast_sessions:
+                del broadcast_sessions[user_id]
             return
-            
-    except Exception as e:
-        logger.error(f"Error obteniendo usuarios: {e}")
-        await query.edit_message_text(
-            f"❌ <b>Error obteniendo usuarios</b>\n\n"
-            f"Error: {str(e)}",
-            parse_mode='HTML'
-        )
-        del broadcast_sessions[user_id]
-        return
-    
-    # Determinar mensaje a enviar
-    if session.message_type == 'welcome':
+        
+        # Determinar mensaje a enviar
+        logger.info(f"Determinando mensaje para tipo: {session.message_type}")
+        if session.message_type == 'welcome':
         message_text = (
             "👋 <b>¡Hola! ¿Estás aburrido?</b>\n\n"
             "¿Qué quieres ver hoy? Tenemos varias opciones para ti:\n\n"
@@ -437,17 +447,33 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Pequeña pausa para evitar rate limit
         await asyncio.sleep(0.05)
     
-    # Limpiar sesión
-    del broadcast_sessions[user_id]
-    
-    # Mostrar resultados finales editando el mismo mensaje
-    await query.edit_message_text(
-        f"✅ <b>Broadcast Completado</b>\n\n"
-        f"📤 Enviados exitosamente: {sent_count}\n"
-        f"❌ Fallidos: {failed_count}\n"
-        f"👥 Total usuarios: {total_users}",
-        parse_mode='HTML'
-    )
+        # Limpiar sesión
+        if user_id in broadcast_sessions:
+            del broadcast_sessions[user_id]
+        
+        # Mostrar resultados finales editando el mismo mensaje
+        logger.info(f"Broadcast completado: enviados={sent_count}, fallidos={failed_count}")
+        await query.edit_message_text(
+            f"✅ <b>Broadcast Completado</b>\n\n"
+            f"📤 Enviados exitosamente: {sent_count}\n"
+            f"❌ Fallidos: {failed_count}\n"
+            f"👥 Total usuarios: {total_users}",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error general en confirm_broadcast: {e}", exc_info=True)
+        try:
+            await query.edit_message_text(
+                f"❌ <b>Error ejecutando broadcast</b>\n\n"
+                f"Error: {str(e)}\n\n"
+                f"Por favor revisa los logs del servidor.",
+                parse_mode='HTML'
+            )
+        except:
+            pass
+        if user_id in broadcast_sessions:
+            del broadcast_sessions[user_id]
 
 async def cancel_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancela el broadcast"""
