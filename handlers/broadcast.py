@@ -20,7 +20,11 @@ class BroadcastSession:
         self.admin_id = admin_id
         self.message_type = None  # 'welcome', 'thanks', 'custom'
         self.custom_message = None
+        self.custom_buttons = []
         self.awaiting_custom = False
+        self.awaiting_button_text = False
+        self.awaiting_button_url = False
+        self.current_button_text = None
 
 async def broadcast_menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -64,6 +68,10 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
         await request_custom_message(update, context)
     elif data == "broadcast_stats":
         await show_broadcast_stats(update, context)
+    elif data == "broadcast_add_button":
+        await add_button_prompt(update, context)
+    elif data == "broadcast_skip_buttons":
+        await skip_buttons_and_preview(update, context)
     elif data == "broadcast_confirm":
         await confirm_broadcast(update, context)
     elif data == "broadcast_cancel":
@@ -147,23 +155,24 @@ async def request_custom_message(update: Update, context: ContextTypes.DEFAULT_T
     broadcast_sessions[user_id] = session
     
     await query.edit_message_text(
-        "✍️ <b>Mensaje Personalizado</b>\n\n"
+        "✍️ <b>Mensaje Personalizado - Paso 1/2</b>\n\n"
         "Escribe el mensaje que deseas enviar a todos los usuarios.\n\n"
         "Puedes usar HTML para formato:\n"
         "• <code>&lt;b&gt;texto&lt;/b&gt;</code> para <b>negrita</b>\n"
         "• <code>&lt;i&gt;texto&lt;/i&gt;</code> para <i>cursiva</i>\n"
         "• <code>&lt;code&gt;texto&lt;/code&gt;</code> para <code>código</code>\n\n"
+        "Luego podrás agregar botones (opcional).\n\n"
         "Envía /cancelar para cancelar.",
         parse_mode='HTML'
     )
 
 async def handle_custom_message_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja el input del mensaje personalizado"""
+    """Maneja el input del mensaje personalizado y botones"""
     user_id = update.effective_user.id
     
     # Verificar si hay sesión activa
     session = broadcast_sessions.get(user_id)
-    if not session or not session.awaiting_custom:
+    if not session:
         return False
     
     message_text = update.message.text
@@ -174,25 +183,130 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
         await update.message.reply_text("❌ Broadcast cancelado.")
         return True
     
-    # Guardar mensaje
-    session.custom_message = message_text
-    session.awaiting_custom = False
+    # Estado 1: Esperando mensaje de texto
+    if session.awaiting_custom:
+        session.custom_message = message_text
+        session.awaiting_custom = False
+        
+        # Preguntar si quiere agregar botones
+        keyboard = [
+            [InlineKeyboardButton("➕ Agregar Botón", callback_data="broadcast_add_button")],
+            [InlineKeyboardButton("✅ Continuar sin botones", callback_data="broadcast_skip_buttons")],
+            [InlineKeyboardButton("❌ Cancelar", callback_data="broadcast_cancel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"📝 <b>Mensaje guardado:</b>\n\n{message_text}\n\n"
+            "¿Deseas agregar botones al mensaje?",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        return True
     
-    # Mostrar preview
+    # Estado 2: Esperando texto del botón
+    elif session.awaiting_button_text:
+        session.current_button_text = message_text
+        session.awaiting_button_text = False
+        session.awaiting_button_url = True
+        
+        await update.message.reply_text(
+            f"🔗 <b>Texto del botón:</b> {message_text}\n\n"
+            "Ahora envía la URL del botón:\n"
+            "(Debe empezar con http:// o https://)\n\n"
+            "Ejemplos:\n"
+            "• https://t.me/tu_canal\n"
+            "• https://ejemplo.com\n\n"
+            "Envía /cancelar para cancelar.",
+            parse_mode='HTML'
+        )
+        return True
+    
+    # Estado 3: Esperando URL del botón
+    elif session.awaiting_button_url:
+        # Validar URL
+        if not message_text.startswith(('http://', 'https://')):
+            await update.message.reply_text(
+                "❌ URL inválida. Debe empezar con http:// o https://\n"
+                "Intenta de nuevo o envía /cancelar"
+            )
+            return True
+        
+        # Guardar botón
+        session.custom_buttons.append({
+            'text': session.current_button_text,
+            'url': message_text
+        })
+        session.awaiting_button_url = False
+        session.current_button_text = None
+        
+        # Preguntar si quiere más botones
+        buttons_preview = "\n".join([f"• {btn['text']} → {btn['url']}" for btn in session.custom_buttons])
+        
+        keyboard = [
+            [InlineKeyboardButton("➕ Agregar otro botón", callback_data="broadcast_add_button")],
+            [InlineKeyboardButton("✅ Finalizar y enviar", callback_data="broadcast_confirm")],
+            [InlineKeyboardButton("❌ Cancelar", callback_data="broadcast_cancel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"✅ <b>Botón agregado!</b>\n\n"
+            f"<b>Botones actuales:</b>\n{buttons_preview}\n\n"
+            "¿Qué deseas hacer?",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+        return True
+    
+    return False
+
+async def add_button_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Solicita texto para un nuevo botón"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    session = broadcast_sessions.get(user_id)
+    if not session:
+        await query.edit_message_text("❌ Sesión expirada. Usa /broadcast nuevamente.")
+        return
+    
+    session.awaiting_button_text = True
+    
+    await query.edit_message_text(
+        "🔤 <b>Agregar Botón - Paso 1/2</b>\n\n"
+        "Envía el texto que aparecerá en el botón.\n\n"
+        "Ejemplos:\n"
+        "• 🔍 Buscar Películas\n"
+        "• 📺 Ver Canal\n"
+        "• 💬 Contactar Soporte\n\n"
+        "Envía /cancelar para cancelar.",
+        parse_mode='HTML'
+    )
+
+async def skip_buttons_and_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Salta la adición de botones y muestra preview final"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    session = broadcast_sessions.get(user_id)
+    if not session:
+        await query.edit_message_text("❌ Sesión expirada. Usa /broadcast nuevamente.")
+        return
+    
+    # Mostrar preview final
     keyboard = [
         [InlineKeyboardButton("✅ Enviar a todos", callback_data="broadcast_confirm")],
         [InlineKeyboardButton("❌ Cancelar", callback_data="broadcast_cancel")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
-        f"📝 <b>Preview del Mensaje:</b>\n\n{message_text}\n\n"
+    await query.edit_message_text(
+        f"📝 <b>Preview del Mensaje:</b>\n\n{session.custom_message}\n\n"
         "¿Deseas enviar este mensaje a todos los usuarios?",
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
-    
-    return True
 
 async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Confirma y ejecuta el broadcast"""
@@ -237,7 +351,12 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = None
     else:  # custom
         message_text = session.custom_message
-        reply_markup = None
+        # Crear botones personalizados si existen
+        if session.custom_buttons:
+            keyboard = [[InlineKeyboardButton(btn['text'], url=btn['url'])] for btn in session.custom_buttons]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        else:
+            reply_markup = None
     
     # Enviar a todos los usuarios
     sent_count = 0
