@@ -395,58 +395,58 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             reply_markup = None
         else:  # custom
-        message_text = session.custom_message
-        # Crear botones personalizados si existen
-        if session.custom_buttons:
-            keyboard = [[InlineKeyboardButton(btn['text'], url=btn['url'])] for btn in session.custom_buttons]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-        else:
-            reply_markup = None
-    
-    # Enviar a todos los usuarios
-    sent_count = 0
-    failed_count = 0
-    
-    # Editar mensaje existente para mostrar progreso inicial
-    await query.edit_message_text(
-        f"📤 <b>Enviando mensajes...</b>\n\n"
-        f"👥 Total usuarios: {total_users}\n"
-        f"📊 Progreso: 0/{total_users} (0%)",
-        parse_mode='HTML'
-    )
-    
-    for index, user in enumerate(users, 1):
-        try:
-            await context.bot.send_message(
-                chat_id=user.user_id,
-                text=message_text,
-                parse_mode='HTML',
-                reply_markup=reply_markup
-            )
-            sent_count += 1
-            
-        except Exception as e:
-            failed_count += 1
-            logger.error(f"Error enviando a usuario {user.user_id}: {e}")
+            message_text = session.custom_message
+            # Crear botones personalizados si existen
+            if session.custom_buttons:
+                keyboard = [[InlineKeyboardButton(btn['text'], url=btn['url'])] for btn in session.custom_buttons]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+            else:
+                reply_markup = None
         
-        # Actualizar progreso cada 10 usuarios o al final
-        if index % 10 == 0 or index == total_users:
+        # Enviar a todos los usuarios
+        sent_count = 0
+        failed_count = 0
+        
+        # Editar mensaje existente para mostrar progreso inicial
+        await query.edit_message_text(
+            f"📤 <b>Enviando mensajes...</b>\n\n"
+            f"👥 Total usuarios: {total_users}\n"
+            f"📊 Progreso: 0/{total_users} (0%)",
+            parse_mode='HTML'
+        )
+        
+        for index, user in enumerate(users, 1):
             try:
-                percentage = int((index / total_users) * 100)
-                await query.edit_message_text(
-                    f"📤 <b>Enviando mensajes...</b>\n\n"
-                    f"👥 Total usuarios: {total_users}\n"
-                    f"📊 Progreso: {index}/{total_users} ({percentage}%)\n"
-                    f"✅ Enviados: {sent_count}\n"
-                    f"❌ Fallidos: {failed_count}",
-                    parse_mode='HTML'
+                await context.bot.send_message(
+                    chat_id=user.user_id,
+                    text=message_text,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
                 )
+                sent_count += 1
+                
             except Exception as e:
-                logger.error(f"Error actualizando progreso: {e}")
+                failed_count += 1
+                logger.error(f"Error enviando a usuario {user.user_id}: {e}")
+            
+            # Actualizar progreso cada 10 usuarios o al final
+            if index % 10 == 0 or index == total_users:
+                try:
+                    percentage = int((index / total_users) * 100)
+                    await query.edit_message_text(
+                        f"📤 <b>Enviando mensajes...</b>\n\n"
+                        f"👥 Total usuarios: {total_users}\n"
+                        f"📊 Progreso: {index}/{total_users} ({percentage}%)\n"
+                        f"✅ Enviados: {sent_count}\n"
+                        f"❌ Fallidos: {failed_count}",
+                        parse_mode='HTML'
+                    )
+                except Exception as e:
+                    logger.error(f"Error actualizando progreso: {e}")
+            
+            # Pequeña pausa para evitar rate limit
+            await asyncio.sleep(0.05)
         
-        # Pequeña pausa para evitar rate limit
-        await asyncio.sleep(0.05)
-    
         # Limpiar sesión
         if user_id in broadcast_sessions:
             del broadcast_sessions[user_id]
