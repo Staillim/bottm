@@ -2,6 +2,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from utils.verification import is_user_member
 from config.settings import VERIFICATION_CHANNEL_USERNAME
+from utils.referral_system import ReferralSystem
+from utils.points_manager import PointsManager
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -15,6 +17,35 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db_user = await db.get_user(user.id)
     if not db_user:
         await db.add_user(user.id, user.username, user.first_name)
+    
+    # Verificar si viene desde un deep link de referido
+    if context.args and len(context.args) > 0:
+        arg = context.args[0]
+        print(f"🔍 Deep link detectado: {arg}")
+        
+        if arg.startswith("ref_"):
+            referral_code = arg.split("_")[1]
+            print(f"🎯 Procesando referido con código: {referral_code}")
+            
+            # Inicializar sistemas de referidos y puntos
+            referral_system = ReferralSystem(db)
+            points_manager = PointsManager(db)
+            
+            # Procesar el referido
+            success, message = await referral_system.process_referral_join(referral_code, user.id)
+            
+            if success:
+                await update.message.reply_text(
+                    f"🎉 ¡Bienvenido a bordo!\n\n{message}\n\n"
+                    f"Ahora puedes usar el bot normalmente. ¡Disfruta!"
+                )
+            else:
+                await update.message.reply_text(
+                    f"⚠️ {message}\n\n"
+                    f"De todas formas, ¡bienvenido! Puedes usar el bot normalmente."
+                )
+            
+            # Continuar con el flujo normal (no retornar)
     
     # Verificar si viene desde un deep link (botón "Ver Ahora")
     if context.args and len(context.args) > 0:
@@ -162,40 +193,78 @@ async def send_video_by_message_id(update, context, video_msg_id, user_id):
         )
         return
     
+    # ========== INTEGRACIÓN SISTEMA DE PUNTOS ==========
+    points_manager = PointsManager(db)
+
+    # Obtener balance de puntos del usuario
+    user_balance = await points_manager.get_user_balance(user_id)
+    available_points = user_balance['available_points'] if user_balance else 0
+
+    # ========== FIN INTEGRACIÓN SISTEMA DE PUNTOS ==========
+
     # Sistema nuevo: user_id + video_id (sin tokens)
     from config.settings import WEBAPP_URL, API_SERVER_URL
     from telegram import WebAppInfo
     import urllib.parse
-    
+
     # Preparar parámetros para la Mini App
     title_encoded = urllib.parse.quote(video.title)
     poster_encoded = urllib.parse.quote(video.poster_url or "https://via.placeholder.com/300x450?text=Sin+Poster")
     api_url_encoded = urllib.parse.quote(API_SERVER_URL)
-    
+
     # Usar user_id y video_id directamente (sin tokens)
     # IMPORTANTE: Usar video.id (ID de base de datos), NO video_msg_id (ID de mensaje en canal)
     webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}&content_type=movie"
-    
+
     print(f"📱 Abriendo Mini App desde deep link:")
     print(f"   User: {user_id}")
     print(f"   Video DB ID: {video.id} (Msg ID: {video_msg_id})")
     print(f"   URL: {webapp_url[:100]}...")
-    
-    # Enviar mensaje con botón de Mini App
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    
-    keyboard = [[
+
+    # Crear botones para elegir opción
+    keyboard = []
+
+    # Opción 1: Ver anuncio gratis
+    keyboard.append([
         InlineKeyboardButton(
-            "🎬 Ver Anuncio para Continuar",
+            "📺 Ver Anuncio Gratis",
             web_app=WebAppInfo(url=webapp_url)
         )
-    ]]
+    ])
+
+    # Opción 2: Usar puntos (solo si tiene suficientes)
+    if available_points >= PointsManager.VIDEO_COST:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"💰 Usar {PointsManager.VIDEO_COST} Punto(s) - Sin Anuncio",
+                callback_data=f"use_points_video_{video.id}"
+            )
+        ])
+
+    # Opción 3: Ver balance de puntos
+    keyboard.append([
+        InlineKeyboardButton("💎 Ver mis Puntos", callback_data="show_points")
+    ])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
+
+    # Mensaje informativo
+    message_text = (
         f"🎬 <b>{video.title}</b>\n\n"
-        f"Para ver esta película, primero debes ver un anuncio corto.\n\n"
-        f"👇 Toca el botón de abajo para continuar:",
+        f"💰 <b>Puntos disponibles:</b> {available_points}\n\n"
+        f"¿Cómo quieres ver esta película?\n\n"
+        f"📺 <b>Opción 1:</b> Ver anuncio corto (gratis)\n"
+    )
+
+    if available_points >= PointsManager.VIDEO_COST:
+        message_text += f"💰 <b>Opción 2:</b> Usar {PointsManager.VIDEO_COST} punto(s) (sin anuncio)\n\n"
+    else:
+        message_text += f"💰 <b>Sin puntos suficientes</b> para ver sin anuncio\n\n"
+
+    message_text += f"👇 Elige una opción:"
+
+    await update.message.reply_text(
+        message_text,
         reply_markup=reply_markup,
         parse_mode="HTML"
     )

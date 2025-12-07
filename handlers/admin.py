@@ -71,13 +71,20 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 # Obtener mensaje sin forward (más eficiente)
                 # Usamos copy_message que es más ligero que forward
-                copied_msg = await context.bot.copy_message(
-                    chat_id=user.id,
-                    from_chat_id=STORAGE_CHANNEL_ID,
-                    message_id=msg_id
-                )
+                try:
+                    copied_msg = await context.bot.copy_message(
+                        chat_id=user.id,
+                        from_chat_id=STORAGE_CHANNEL_ID,
+                        message_id=msg_id
+                    )
+                except Exception as copy_error:
+                    # Mensaje no existe o no accesible - continuar al siguiente
+                    print(f"⚠️ Mensaje {msg_id} no accesible: {copy_error}")
+                    consecutive_empty += 1
+                    continue
                 
-                # Mensaje existe
+                # Mensaje existe - resetear contador de vacíos
+                consecutive_empty = 0
                 consecutive_empty = 0
                 current_id = msg_id
                 
@@ -125,13 +132,10 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except:
                         pass
                     continue
-                    
-            except Exception:
-                # Mensaje no existe
-                consecutive_empty += 1
-                
-                if consecutive_empty >= max_empty:
-                    break
+            
+            # Verificar si hemos alcanzado el límite de mensajes vacíos consecutivos
+            if consecutive_empty >= max_empty:
+                break
         
         # Finalizar sesión
         await finalize_indexing(update, context, session, current_id, db)
