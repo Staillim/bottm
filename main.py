@@ -24,6 +24,7 @@ from handlers.callbacks import handle_callback
 from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command
 from handlers.admin_menu import admin_menu_command, admin_callback_handler, process_new_episode
 from handlers.indexing_callbacks import handle_title_input, handle_indexing_callback
+from handlers.broadcast import broadcast_menu_command, handle_broadcast_callback, handle_custom_message_input
 
 # Configurar logging
 logging.basicConfig(
@@ -97,6 +98,7 @@ def main():
     
     # Handlers de callbacks (nuevo sistema unificado tiene prioridad)
     application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
+    application.add_handler(CallbackQueryHandler(handle_broadcast_callback, pattern="^broadcast_"))
     application.add_handler(CallbackQueryHandler(handle_indexing_callback, pattern="^idx_"))
     application.add_handler(CallbackQueryHandler(handle_reindex_callback, pattern="^ridx_"))
     application.add_handler(CallbackQueryHandler(handle_repost_callback, pattern="^repost_"))
@@ -108,6 +110,10 @@ def main():
     async def text_handler_with_auto_index(update, context):
         # Intentar manejar input de canal para repost
         await handle_repost_channel_input(update, context)
+        
+        # Intentar manejar mensaje personalizado de broadcast
+        if await handle_custom_message_input(update, context):
+            return
         
         # Intentar manejar input de título para indexación
         if await handle_title_input(update, context):

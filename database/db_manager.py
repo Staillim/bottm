@@ -51,6 +51,14 @@ class DatabaseManager:
             )
             return result.scalar_one_or_none()
     
+    async def get_all_users(self):
+        """Obtiene todos los usuarios registrados"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(User).order_by(User.created_at.desc())
+            )
+            return result.scalars().all()
+    
     async def update_user_verification(self, user_id, verified):
         async with self.async_session() as session:
             result = await session.execute(
