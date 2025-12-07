@@ -353,6 +353,7 @@ def run_telegram_bot():
         
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("admin", admin_menu_command))
+        application.add_handler(CommandHandler("broadcast", broadcast_menu_command))
         application.add_handler(CommandHandler("indexar", indexar_command))
         application.add_handler(CommandHandler("indexar_manual", indexar_manual_command))
         application.add_handler(CommandHandler("reindexar", reindexar_command))
