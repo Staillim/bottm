@@ -321,7 +321,7 @@ def run_telegram_bot():
         from handlers.callbacks import handle_callback
         from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command
         from handlers.admin_menu import admin_menu_command, admin_callback_handler, process_new_episode
-        from handlers.indexing_callbacks import handle_title_input
+        from handlers.indexing_callbacks import handle_title_input, handle_indexing_callback
         from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters
         
         # Inicializar base de datos
@@ -362,6 +362,7 @@ def run_telegram_bot():
         
         # Handlers de callbacks
         application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
+        application.add_handler(CallbackQueryHandler(handle_indexing_callback, pattern="^idx_"))
         application.add_handler(CallbackQueryHandler(handle_reindex_callback, pattern="^ridx_"))
         application.add_handler(CallbackQueryHandler(handle_repost_callback, pattern="^repost_"))
         application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(menu_|movie_|series_|season_|episode_)"))
