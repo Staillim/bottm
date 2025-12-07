@@ -3,9 +3,6 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 from database.db_manager import DatabaseManager
 from utils.referral_system import ReferralSystem
 from utils.points_manager import PointsManager
-from config.settings import WEBAPP_URL, API_SERVER_URL
-from telegram import WebAppInfo
-import urllib.parse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -305,37 +302,83 @@ Nuevo enlace: {new_link}
                 await query.edit_message_text("❌ Video no encontrado.")
                 return
 
-            # Preparar URL de Mini App sin anuncio
-            title_encoded = urllib.parse.quote(video.title)
-            poster_encoded = urllib.parse.quote(video.poster_url or "https://via.placeholder.com/300x450?text=Sin+Poster")
-            api_url_encoded = urllib.parse.quote(API_SERVER_URL)
-
-            # URL especial para video premium (sin anuncio)
-            webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}&content_type=movie&premium=true"
-
-            # Crear botón para ver video sin anuncio
-            keyboard = [[
-                InlineKeyboardButton(
-                    "🎬 Ver Video Premium (Sin Anuncio)",
-                    web_app=WebAppInfo(url=webapp_url)
-                )
-            ]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            # Mensaje de confirmación
+            # Actualizar mensaje con confirmación
             await query.edit_message_text(
                 f"✅ <b>¡Puntos usados exitosamente!</b>\n\n"
-                f"🎬 <b>{video.title}</b>\n\n"
+                f"🎬 Enviando video: <b>{video.title}</b>\n\n"
                 f"💰 Usaste {PointsManager.VIDEO_COST} punto(s)\n"
-                f"⭐ Ahora puedes ver el video sin anuncio\n\n"
-                f"👇 Toca el botón para continuar:",
-                reply_markup=reply_markup,
+                f"⏳ Preparando envío...",
                 parse_mode='HTML'
             )
 
+            # Enviar el poster primero si existe
+            if video.poster_url:
+                try:
+                    import io
+                    import requests as req
+
+                    response = req.get(video.poster_url, timeout=10)
+                    response.raise_for_status()
+                    photo = io.BytesIO(response.content)
+                    photo.name = "poster.jpg"
+
+                    caption = f"🎬 <b>{video.title}</b>\n"
+                    if video.year:
+                        caption += f"📅 {video.year}\n"
+                    if video.vote_average:
+                        caption += f"⭐ {video.vote_average/10:.1f}/10\n"
+                    if video.runtime:
+                        caption += f"⏱️ {video.runtime} min\n"
+                    if video.genres:
+                        caption += f"🎭 {video.genres}\n"
+                    if video.overview:
+                        caption += f"\n📝 {video.overview}\n"
+
+                    await context.bot.send_photo(
+                        chat_id=user_id,
+                        photo=photo,
+                        caption=caption,
+                        parse_mode="HTML"
+                    )
+                except Exception as e:
+                    logger.error(f"Error enviando poster: {e}")
+
+            # Enviar el video
+            try:
+                caption_text = f"🎬 {video.title}"
+                if video.year:
+                    caption_text += f" ({video.year})"
+
+                await context.bot.send_video(
+                    chat_id=user_id,
+                    video=video.file_id,
+                    caption=caption_text,
+                    supports_streaming=True,
+                    read_timeout=60,
+                    write_timeout=60,
+                    connect_timeout=60
+                )
+
+                # Mensaje de confirmación
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="✅ ¡Disfruta tu video premium sin anuncios!\n\n"
+                         "💰 Usa /points para ver tu balance\n"
+                         "🎯 Usa /referral para ganar más puntos"
+                )
+
+            except Exception as e:
+                logger.error(f"Error enviando video: {e}")
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="❌ Hubo un error al enviar el video. Por favor intenta más tarde."
+                )
+
         except Exception as e:
-            logger.error(f"Error usando puntos para video: {e}")
-            await query.edit_message_text("❌ Error al procesar la solicitud. Inténtalo de nuevo.")
+            logger.error(f"Error en _use_points_for_video_callback: {e}")
+            await query.edit_message_text(
+                "❌ Error al procesar la solicitud. Inténtalo de nuevo."
+            )
 
     def get_handlers(self):
         """Retorna los handlers para registrar en el bot"""
