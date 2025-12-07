@@ -75,6 +75,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_movie_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, video_id: int):
     """Maneja la selección de una película"""
+    db = context.bot_data['db']
     query = update.callback_query
     user_id = update.effective_user.id
     
@@ -103,6 +104,7 @@ async def handle_movie_selection(update: Update, context: ContextTypes.DEFAULT_T
 
 async def handle_episode_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, episode_id: int):
     """Maneja la selección de un episodio"""
+    db = context.bot_data['db']
     query = update.callback_query
     user_id = update.effective_user.id
     
