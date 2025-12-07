@@ -329,6 +329,17 @@ def run_telegram_bot():
         db = DatabaseManager()
         loop.run_until_complete(db.init_db())
         
+        # Limpiar webhooks antes de iniciar polling
+        print("🔧 Limpiando webhooks pendientes...")
+        bot = Bot(token=BOT_TOKEN)
+        try:
+            loop.run_until_complete(bot.delete_webhook(drop_pending_updates=True))
+            print("✅ Webhooks limpiados")
+        except Exception as e:
+            print(f"⚠️ Error limpiando webhook: {e}")
+        finally:
+            loop.run_until_complete(bot.shutdown())
+        
         # Crear aplicación
         application = Application.builder().token(BOT_TOKEN).build()
         
@@ -397,7 +408,33 @@ def run_telegram_bot():
         # Ejecutar bot en este event loop (sin signal handlers)
         loop.run_until_complete(application.initialize())
         loop.run_until_complete(application.start())
-        loop.run_until_complete(application.updater.start_polling(allowed_updates=Update.ALL_TYPES))
+        
+        # Iniciar polling con manejo de conflictos
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                print(f"🔄 Intentando iniciar polling (intento {retry_count + 1}/{max_retries})...")
+                loop.run_until_complete(application.updater.start_polling(
+                    allowed_updates=Update.ALL_TYPES,
+                    drop_pending_updates=True
+                ))
+                print("✅ Bot ejecutándose correctamente")
+                break
+            except Exception as e:
+                if "Conflict" in str(e):
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        print(f"⚠️ Conflicto detectado, esperando 10 segundos antes de reintentar...")
+                        import time
+                        time.sleep(10)
+                    else:
+                        print(f"❌ Máximo de reintentos alcanzado. Error: {e}")
+                        raise
+                else:
+                    print(f"❌ Error no relacionado con conflicto: {e}")
+                    raise
         
         print("✅ Bot ejecutándose correctamente")
         
