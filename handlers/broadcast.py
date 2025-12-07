@@ -380,8 +380,8 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             # Botones interactivos
             keyboard = [
-                [InlineKeyboardButton("🔍 Buscar Ahora", switch_inline_query_current_chat="")],
-                [InlineKeyboardButton("📺 Ver Catálogo", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME}")]
+                [InlineKeyboardButton("🔍 Buscar Ahora", url="https://t.me/CineStelar_bot")],
+                [InlineKeyboardButton("📺 Ver Catálogo", url="https://t.me/CineStellar_S")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
         elif session.message_type == 'thanks':
