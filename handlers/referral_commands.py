@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler
 from database.db_manager import DatabaseManager
 from utils.referral_system import ReferralSystem
 from utils.points_manager import PointsManager
+from config.settings import BOT_USERNAME
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,8 +36,7 @@ class ReferralCommands:
             stats = await self.referral_system.get_referral_stats(user.id)
 
             # Generar enlace de referido
-            bot_username = context.bot.username
-            referral_link = self.referral_system.generate_referral_link(bot_username, referral_code)
+            referral_link = self.referral_system.generate_referral_link(BOT_USERNAME, referral_code)
 
             # Crear mensaje con estadísticas
             message = f"""
@@ -256,8 +256,7 @@ Enlace para compartir: {referral_link}
             return
 
         # Generar nuevo enlace
-        bot_username = context.bot.username
-        new_link = self.referral_system.generate_referral_link(bot_username, new_code)
+        new_link = self.referral_system.generate_referral_link(BOT_USERNAME, new_code)
 
         message = f"""
 🔄 **Código Actualizado**
