@@ -380,7 +380,7 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             # Botones interactivos
             keyboard = [
-                [InlineKeyboardButton("🔍 Buscar Ahora", url="https://t.me/CineStelar_bot")],
+                [InlineKeyboardButton("🔍 Buscar Ahora", callback_data="menu_main")],
                 [InlineKeyboardButton("📺 Ver Catálogo", url="https://t.me/CineStellar_S")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
