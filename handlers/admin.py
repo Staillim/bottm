@@ -133,11 +133,14 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         pass
                     continue
             
+            except Exception as e:
+                # Error en el procesamiento del mensaje
+                logger.error(f"Error procesando mensaje {msg_id}: {e}")
+                continue
+
             # Verificar si hemos alcanzado el límite de mensajes vacíos consecutivos
             if consecutive_empty >= max_empty:
-                break
-        
-        # Finalizar sesión
+                break        # Finalizar sesión
         await finalize_indexing(update, context, session, current_id, db)
         
     except Exception as e:
