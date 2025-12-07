@@ -64,21 +64,25 @@ async def help_command(update, context):
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def post_init(application):
-    """Inicializar base de datos"""
-    db = DatabaseManager()
-    await db.init_db()
-    application.bot_data['db'] = db
+    """Ya no se usa - inicialización movida a main()"""
+    pass
     
     logger.info("Base de datos y sistema de referidos inicializados")
 
 def main():
     """Iniciar el bot"""
-    # Crear aplicación
-    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    # Inicializar base de datos
+    db = DatabaseManager()
+    asyncio.run(db.init_db())
     
     # Inicializar sistema de referidos y puntos
-    db = application.bot_data['db']
     referral_commands = ReferralCommands(db)
+    
+    # Crear aplicación
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # Guardar en bot_data
+    application.bot_data['db'] = db
     application.bot_data['referral_commands'] = referral_commands
     
     # Handlers de comandos
