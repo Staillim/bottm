@@ -334,10 +334,29 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Sesión expirada. Usa /broadcast nuevamente.")
         return
     
-    await query.edit_message_text("📤 <b>Enviando mensajes...</b>\n\nEsto puede tomar unos momentos.", parse_mode='HTML')
-    
-    # Obtener todos los usuarios
-    users = await db.get_all_users()
+    # Obtener todos los usuarios primero
+    try:
+        users = await db.get_all_users()
+        total_users = len(users)
+        
+        if total_users == 0:
+            await query.edit_message_text(
+                "⚠️ <b>No hay usuarios registrados</b>\n\n"
+                "El bot aún no tiene usuarios en la base de datos.",
+                parse_mode='HTML'
+            )
+            del broadcast_sessions[user_id]
+            return
+            
+    except Exception as e:
+        logger.error(f"Error obteniendo usuarios: {e}")
+        await query.edit_message_text(
+            f"❌ <b>Error obteniendo usuarios</b>\n\n"
+            f"Error: {str(e)}",
+            parse_mode='HTML'
+        )
+        del broadcast_sessions[user_id]
+        return
     
     # Determinar mensaje a enviar
     if session.message_type == 'welcome':
@@ -377,10 +396,9 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Enviar a todos los usuarios
     sent_count = 0
     failed_count = 0
-    total_users = len(users)
     
-    # Mensaje inicial
-    progress_msg = await query.message.reply_text(
+    # Editar mensaje existente para mostrar progreso inicial
+    await query.edit_message_text(
         f"📤 <b>Enviando mensajes...</b>\n\n"
         f"👥 Total usuarios: {total_users}\n"
         f"📊 Progreso: 0/{total_users} (0%)",
@@ -405,7 +423,7 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if index % 10 == 0 or index == total_users:
             try:
                 percentage = int((index / total_users) * 100)
-                await progress_msg.edit_text(
+                await query.edit_message_text(
                     f"📤 <b>Enviando mensajes...</b>\n\n"
                     f"👥 Total usuarios: {total_users}\n"
                     f"📊 Progreso: {index}/{total_users} ({percentage}%)\n"
@@ -422,14 +440,8 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Limpiar sesión
     del broadcast_sessions[user_id]
     
-    # Eliminar mensaje de progreso
-    try:
-        await progress_msg.delete()
-    except:
-        pass
-    
-    # Reportar resultados finales
-    await query.message.reply_text(
+    # Mostrar resultados finales editando el mismo mensaje
+    await query.edit_message_text(
         f"✅ <b>Broadcast Completado</b>\n\n"
         f"📤 Enviados exitosamente: {sent_count}\n"
         f"❌ Fallidos: {failed_count}\n"
