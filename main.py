@@ -24,7 +24,6 @@ from handlers.callbacks import handle_callback
 from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command
 from handlers.admin_menu import admin_menu_command, admin_callback_handler, process_new_episode
 from handlers.indexing_callbacks import handle_title_input
-from handlers.referral_commands import ReferralCommands
 
 # Configurar logging
 logging.basicConfig(
@@ -69,7 +68,7 @@ async def post_init(application):
     """Ya no se usa - inicialización movida a main()"""
     pass
     
-    logger.info("Base de datos y sistema de referidos inicializados")
+    logger.info("Base de datos inicializada")
 
 def main():
     """Iniciar el bot"""
@@ -77,15 +76,11 @@ def main():
     db = DatabaseManager()
     asyncio.run(db.init_db())
     
-    # Inicializar sistema de referidos y puntos
-    referral_commands = ReferralCommands(db)
-    
     # Crear aplicación
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Guardar en bot_data
     application.bot_data['db'] = db
-    application.bot_data['referral_commands'] = referral_commands
     
     # Handlers de comandos
     application.add_handler(CommandHandler("start", start_command))
@@ -99,11 +94,6 @@ def main():
     application.add_handler(CommandHandler("indexar_serie", index_series_command))
     application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))
     application.add_handler(CommandHandler("stats", stats_command))
-    
-    # Handlers del sistema de referidos y puntos
-    referral_commands = application.bot_data['referral_commands']
-    for handler in referral_commands.get_handlers():
-        application.add_handler(handler)
     
     # Handlers de callbacks (nuevo sistema unificado tiene prioridad)
     application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))

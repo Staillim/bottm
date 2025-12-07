@@ -15,11 +15,6 @@ class User(Base):
     verified = Column(Boolean, default=False)
     joined_at = Column(DateTime, server_default=func.now())
     last_active = Column(DateTime, onupdate=func.now())
-    
-    # Relaciones para el sistema de puntos
-    points = relationship("UserPoints", back_populates="user", uselist=False)
-    referrals_made = relationship("Referral", foreign_keys="Referral.referrer_id", back_populates="referrer")
-    referrals_received = relationship("Referral", foreign_keys="Referral.referred_id", back_populates="referred")
 
 class Video(Base):
     __tablename__ = 'videos'
@@ -127,51 +122,3 @@ class BotConfig(Base):
     key = Column(String(100), unique=True, nullable=False)  # Ej: 'last_indexed_message'
     value = Column(String(500), nullable=False)  # Valor como string
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-
-
-class UserPoints(Base):
-    __tablename__ = 'user_points'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(BigInteger, ForeignKey('users.user_id'), nullable=False, unique=True)
-    total_points = Column(Float, default=0.0, nullable=False)
-    available_points = Column(Float, default=0.0, nullable=False)
-    used_points = Column(Float, default=0.0, nullable=False)
-    last_activity = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relaciones
-    user = relationship("User", back_populates="points")
-    transactions = relationship("PointsTransaction", back_populates="user_points")
-
-
-class Referral(Base):
-    __tablename__ = 'referrals'
-    
-    id = Column(Integer, primary_key=True)
-    referral_code = Column(String(20), unique=True, nullable=False, index=True)
-    referrer_id = Column(BigInteger, ForeignKey('users.user_id'), nullable=False)
-    referred_id = Column(BigInteger, ForeignKey('users.user_id'), nullable=True)
-    status = Column(String(20), default='pending', nullable=False)  # pending, completed, expired
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    completed_at = Column(DateTime(timezone=True))
-    expires_at = Column(DateTime(timezone=True))  # Código expira después de 30 días
-    
-    # Relaciones
-    referrer = relationship("User", foreign_keys=[referrer_id], back_populates="referrals_made")
-    referred = relationship("User", foreign_keys=[referred_id], back_populates="referrals_received")
-
-
-class PointsTransaction(Base):
-    __tablename__ = 'points_transactions'
-    
-    id = Column(Integer, primary_key=True)
-    user_points_id = Column(Integer, ForeignKey('user_points.id'), nullable=False)
-    transaction_type = Column(String(50), nullable=False)  # earned, used, bonus, referral
-    amount = Column(Float, nullable=False)
-    description = Column(String(255), nullable=False)
-    reference_id = Column(String(100))  # ID de referencia (video_id, referral_id, etc.)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
-    # Relaciones
-    user_points = relationship("UserPoints", back_populates="transactions")

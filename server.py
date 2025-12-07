@@ -305,7 +305,6 @@ def run_telegram_bot():
         from telegram.ext import Application
         from config.settings import BOT_TOKEN
         from database.db_manager import DatabaseManager
-        from handlers.referral_commands import ReferralCommands
         from telegram import Update
         
         # Importar handlers
@@ -329,15 +328,11 @@ def run_telegram_bot():
         db = DatabaseManager()
         loop.run_until_complete(db.init_db())
         
-        # Inicializar sistema de referidos y puntos
-        referral_commands = ReferralCommands(db)
-        
         # Crear aplicación
         application = Application.builder().token(BOT_TOKEN).build()
         
         # Guardar en bot_data
         application.bot_data['db'] = db
-        application.bot_data['referral_commands'] = referral_commands
         
         # Registrar handlers de comandos
         application.add_handler(CommandHandler("start", start_command))
@@ -352,8 +347,6 @@ def run_telegram_bot():
 /start - Iniciar y ver menu principal
 /buscar <termino> - Buscar videos
 /help - Mostrar esta ayuda
-/referral - Ver código de referido
-/points - Ver balance de puntos
             """
             await update.message.reply_text(help_text, parse_mode='Markdown')
         
@@ -366,10 +359,6 @@ def run_telegram_bot():
         application.add_handler(CommandHandler("indexar_serie", index_series_command))
         application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))
         application.add_handler(CommandHandler("stats", stats_command))
-        
-        # Handlers del sistema de referidos y puntos
-        for handler in referral_commands.get_handlers():
-            application.add_handler(handler)
         
         # Handlers de callbacks
         application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
