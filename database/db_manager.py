@@ -55,7 +55,7 @@ class DatabaseManager:
         """Obtiene todos los usuarios registrados"""
         async with self.async_session() as session:
             result = await session.execute(
-                select(User).order_by(User.created_at.desc())
+                select(User).order_by(User.joined_at.desc())
             )
             return result.scalars().all()
     
