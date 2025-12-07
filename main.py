@@ -36,30 +36,30 @@ async def help_command(update, context):
 📚 *Ayuda del Bot*
 
 *Comandos disponibles:*
-/start - Iniciar y ver menú principal
-/buscar <término> - Buscar videos (modo antiguo)
-/search <término> - Search videos (English)
+/start - Iniciar y ver menu principal
+/buscar <termino> - Buscar videos (modo antiguo)
+/search <termino> - Search videos (English)
 /help - Mostrar esta ayuda
 
-*Comandos de Administración:*
-/indexar - Indexar nuevas películas automáticamente
-/indexar_manual <msg_id> - Indexar película específica
-/reindexar <msg_id> - Re-indexar película existente
+*Comandos de Administracion:*
+/indexar - Indexar nuevas peliculas automaticamente
+/indexar_manual <msg_id> - Indexar pelicula especifica
+/reindexar <msg_id> - Re-indexar pelicula existente
 /repost - Re-publicar videos antiguos en nuevo canal
 /indexar_serie <serie> - Indexar nueva serie
-/terminar_indexacion - Finalizar indexación de serie
-/stats - Ver estadísticas del bot
+/terminar_indexacion - Finalizar indexacion de serie
+/stats - Ver estadisticas del bot
 
-*Cómo usar:*
-1. Únete al canal de verificación
-2. Verifica tu membresía
-3. Usa el menú interactivo para elegir películas o series
+*Como usar:*
+1. Unete al canal de verificacion
+2. Verifica tu membresia
+3. Usa el menu interactivo para elegir peliculas o series
 4. Busca por nombre y selecciona lo que quieres ver
 
-*Ejemplos de búsqueda:*
-• Thor
-• Loki (2021)
-• Breaking Bad
+*Ejemplos de busqueda:*
+- Thor
+- Loki (2021)
+- Breaking Bad
     """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
