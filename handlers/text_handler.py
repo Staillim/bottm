@@ -3,13 +3,11 @@ Handler para mensajes de texto - Búsqueda contextual de películas/series
 """
 from telegram import Update
 from telegram.ext import ContextTypes
-from database.db_manager import DatabaseManager
 from handlers.menu import show_movie_results, show_series_results
-
-db = DatabaseManager()
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja mensajes de texto según el estado de navegación del usuario"""
+    db = context.bot_data['db']
     user_id = update.effective_user.id
     message_text = update.message.text.strip()
     
@@ -43,6 +41,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
     """Busca películas en la base de datos"""
+    db = context.bot_data['db']
     # Buscar en base de datos
     results = await db.search_videos(query, limit=10)
     
@@ -51,6 +50,7 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE, quer
 
 async def search_series(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
     """Busca series en la base de datos"""
+    db = context.bot_data['db']
     # Buscar en base de datos
     results = await db.search_tv_shows(query, limit=10)
     

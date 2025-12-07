@@ -3,12 +3,11 @@ Módulo de menús interactivos para películas y series
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from database.db_manager import DatabaseManager
-
-db = DatabaseManager()
 
 async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menú principal: Películas o Series"""
+    db = context.bot_data['db']
+    
     keyboard = [
         [
             InlineKeyboardButton("🎬 Películas", callback_data="menu_movies"),
@@ -41,6 +40,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def movies_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menú de películas: Instrucciones para buscar"""
+    db = context.bot_data['db']
     query = update.callback_query
     await query.answer()
     
@@ -69,6 +69,7 @@ async def movies_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def series_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menú de series: Instrucciones para buscar"""
+    db = context.bot_data['db']
     query = update.callback_query
     await query.answer()
     
@@ -185,6 +186,7 @@ async def show_series_results(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def show_seasons_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, show_id: int):
     """Muestra menú de temporadas disponibles para una serie"""
+    db = context.bot_data['db']
     query = update.callback_query
     await query.answer()
     
@@ -241,6 +243,7 @@ async def show_seasons_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
 async def show_episodes_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, show_id: int, season_number: int):
     """Muestra menú de episodios de una temporada"""
+    db = context.bot_data['db']
     query = update.callback_query
     await query.answer()
     

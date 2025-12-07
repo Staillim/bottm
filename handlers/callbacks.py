@@ -3,7 +3,6 @@ Handler unificado de callbacks para el sistema de menús interactivos
 """
 from telegram import Update
 from telegram.ext import ContextTypes
-from database.db_manager import DatabaseManager
 from handlers.menu import (
     main_menu, movies_menu, series_menu,
     show_seasons_menu, show_episodes_menu
@@ -12,11 +11,11 @@ from config.settings import STORAGE_CHANNEL_ID, WEBAPP_URL, API_SERVER_URL
 import logging
 import urllib.parse
 
-db = DatabaseManager()
 logger = logging.getLogger(__name__)
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja todos los callbacks del sistema de menús"""
+    db = context.bot_data['db']
     query = update.callback_query
     await query.answer()
     
