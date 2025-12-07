@@ -76,6 +76,22 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
         await confirm_broadcast(update, context)
     elif data == "broadcast_cancel":
         await cancel_broadcast(update, context)
+    elif data == "broadcast_back":
+        # Volver al menú principal
+        keyboard = [
+            [InlineKeyboardButton("👋 Mensaje de Bienvenida", callback_data="broadcast_welcome")],
+            [InlineKeyboardButton("🙏 Mensaje de Agradecimiento", callback_data="broadcast_thanks")],
+            [InlineKeyboardButton("✍️ Mensaje Personalizado", callback_data="broadcast_custom")],
+            [InlineKeyboardButton("📊 Ver Estadísticas", callback_data="broadcast_stats")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            "📢 <b>Sistema de Broadcast</b>\n\n"
+            "Selecciona el tipo de mensaje a enviar a todos los usuarios:",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
 
 async def send_welcome_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Envía mensaje de bienvenida interactivo a todos los usuarios"""
@@ -361,8 +377,17 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Enviar a todos los usuarios
     sent_count = 0
     failed_count = 0
+    total_users = len(users)
     
-    for user in users:
+    # Mensaje inicial
+    progress_msg = await query.message.reply_text(
+        f"📤 <b>Enviando mensajes...</b>\n\n"
+        f"👥 Total usuarios: {total_users}\n"
+        f"📊 Progreso: 0/{total_users} (0%)",
+        parse_mode='HTML'
+    )
+    
+    for index, user in enumerate(users, 1):
         try:
             await context.bot.send_message(
                 chat_id=user.user_id,
@@ -372,22 +397,43 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             sent_count += 1
             
-            # Pequeña pausa para evitar rate limit
-            await asyncio.sleep(0.05)
-            
         except Exception as e:
             failed_count += 1
             logger.error(f"Error enviando a usuario {user.user_id}: {e}")
+        
+        # Actualizar progreso cada 10 usuarios o al final
+        if index % 10 == 0 or index == total_users:
+            try:
+                percentage = int((index / total_users) * 100)
+                await progress_msg.edit_text(
+                    f"📤 <b>Enviando mensajes...</b>\n\n"
+                    f"👥 Total usuarios: {total_users}\n"
+                    f"📊 Progreso: {index}/{total_users} ({percentage}%)\n"
+                    f"✅ Enviados: {sent_count}\n"
+                    f"❌ Fallidos: {failed_count}",
+                    parse_mode='HTML'
+                )
+            except Exception as e:
+                logger.error(f"Error actualizando progreso: {e}")
+        
+        # Pequeña pausa para evitar rate limit
+        await asyncio.sleep(0.05)
     
     # Limpiar sesión
     del broadcast_sessions[user_id]
     
-    # Reportar resultados
+    # Eliminar mensaje de progreso
+    try:
+        await progress_msg.delete()
+    except:
+        pass
+    
+    # Reportar resultados finales
     await query.message.reply_text(
         f"✅ <b>Broadcast Completado</b>\n\n"
-        f"📤 Enviados: {sent_count}\n"
+        f"📤 Enviados exitosamente: {sent_count}\n"
         f"❌ Fallidos: {failed_count}\n"
-        f"👥 Total usuarios: {len(users)}",
+        f"👥 Total usuarios: {total_users}",
         parse_mode='HTML'
     )
 
@@ -405,24 +451,40 @@ async def show_broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYP
     """Muestra estadísticas de usuarios para broadcast"""
     query = update.callback_query
     
-    users = await db.get_all_users()
-    total_users = len(users)
-    
-    # Contar usuarios activos (últimos 7 días)
-    from datetime import datetime, timedelta, timezone
-    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-    
-    active_users = sum(1 for user in users if user.last_activity and user.last_activity > week_ago)
-    
-    keyboard = [[InlineKeyboardButton("⬅️ Volver", callback_data="broadcast_back")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        f"📊 <b>Estadísticas de Usuarios</b>\n\n"
-        f"👥 Total de usuarios: {total_users}\n"
-        f"🟢 Activos (últimos 7 días): {active_users}\n"
-        f"📉 Inactivos: {total_users - active_users}\n\n"
-        f"El mensaje se enviará a todos los {total_users} usuarios.",
-        reply_markup=reply_markup,
-        parse_mode='HTML'
-    )
+    try:
+        users = await db.get_all_users()
+        total_users = len(users)
+        
+        if total_users == 0:
+            await query.edit_message_text(
+                "⚠️ <b>No hay usuarios registrados</b>\n\n"
+                "El bot aún no tiene usuarios en la base de datos.",
+                parse_mode='HTML'
+            )
+            return
+        
+        # Contar usuarios activos (últimos 7 días)
+        from datetime import datetime, timedelta, timezone
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+        
+        active_users = sum(1 for user in users if user.last_active and user.last_active > week_ago)
+        
+        keyboard = [[InlineKeyboardButton("⬅️ Volver", callback_data="broadcast_back")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"📊 <b>Estadísticas de Usuarios</b>\n\n"
+            f"👥 Total de usuarios: {total_users}\n"
+            f"🟢 Activos (últimos 7 días): {active_users}\n"
+            f"📉 Inactivos: {total_users - active_users}\n\n"
+            f"El mensaje se enviará a todos los {total_users} usuarios.",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+    except Exception as e:
+        logger.error(f"Error obteniendo estadísticas: {e}")
+        await query.edit_message_text(
+            f"❌ <b>Error obteniendo estadísticas</b>\n\n"
+            f"Error: {str(e)}",
+            parse_mode='HTML'
+        )
