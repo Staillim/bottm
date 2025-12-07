@@ -69,16 +69,17 @@ async def post_init(application):
     await db.init_db()
     application.bot_data['db'] = db
     
-    # Inicializar sistema de referidos y puntos
-    referral_commands = ReferralCommands(db)
-    application.bot_data['referral_commands'] = referral_commands
-    
     logger.info("Base de datos y sistema de referidos inicializados")
 
 def main():
     """Iniciar el bot"""
     # Crear aplicación
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    
+    # Inicializar sistema de referidos y puntos
+    db = application.bot_data['db']
+    referral_commands = ReferralCommands(db)
+    application.bot_data['referral_commands'] = referral_commands
     
     # Handlers de comandos
     application.add_handler(CommandHandler("start", start_command))
