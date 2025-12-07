@@ -293,12 +293,122 @@ def health():
     return jsonify({'status': 'ok', 'service': 'CineStelar WebApp Server'})
 
 def run_telegram_bot():
-    """Ejecuta el bot de Telegram directamente importando main.py"""
+    """Ejecuta el bot de Telegram en un thread con su propio event loop"""
     try:
         print("🤖 Iniciando Bot de Telegram...")
-        # Importar y ejecutar main directamente
-        from main import main as telegram_main
-        telegram_main()
+        
+        # Crear un nuevo event loop para este thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Importar componentes necesarios
+        from telegram.ext import Application
+        from config.settings import BOT_TOKEN
+        from database.db_manager import DatabaseManager
+        from handlers.referral_commands import ReferralCommands
+        from telegram import Update
+        
+        # Importar handlers
+        from handlers.start import start_command, verify_callback
+        from handlers.search import search_command, video_callback
+        from handlers.admin import (
+            indexar_command, stats_command, indexar_manual_command, 
+            reindexar_command, handle_reindex_callback
+        )
+        from handlers.repost import (
+            repost_command, handle_repost_callback, handle_repost_channel_input
+        )
+        from handlers.text_handler import handle_text_message
+        from handlers.callbacks import handle_callback
+        from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command
+        from handlers.admin_menu import admin_menu_command, admin_callback_handler, process_new_episode
+        from handlers.indexing_callbacks import handle_title_input
+        from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters
+        
+        # Inicializar base de datos
+        db = DatabaseManager()
+        loop.run_until_complete(db.init_db())
+        
+        # Inicializar sistema de referidos y puntos
+        referral_commands = ReferralCommands(db)
+        
+        # Crear aplicación
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        # Guardar en bot_data
+        application.bot_data['db'] = db
+        application.bot_data['referral_commands'] = referral_commands
+        
+        # Registrar handlers de comandos
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler(["buscar", "search"], search_command))
+        
+        # Help command inline
+        async def help_command(update, context):
+            help_text = """
+📚 *Ayuda del Bot*
+
+*Comandos disponibles:*
+/start - Iniciar y ver menu principal
+/buscar <termino> - Buscar videos
+/help - Mostrar esta ayuda
+/referral - Ver código de referido
+/points - Ver balance de puntos
+            """
+            await update.message.reply_text(help_text, parse_mode='Markdown')
+        
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("admin", admin_menu_command))
+        application.add_handler(CommandHandler("indexar", indexar_command))
+        application.add_handler(CommandHandler("indexar_manual", indexar_manual_command))
+        application.add_handler(CommandHandler("reindexar", reindexar_command))
+        application.add_handler(CommandHandler("repost", repost_command))
+        application.add_handler(CommandHandler("indexar_serie", index_series_command))
+        application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))
+        application.add_handler(CommandHandler("stats", stats_command))
+        
+        # Handlers del sistema de referidos y puntos
+        for handler in referral_commands.get_handlers():
+            application.add_handler(handler)
+        
+        # Handlers de callbacks
+        application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
+        application.add_handler(CallbackQueryHandler(handle_reindex_callback, pattern="^ridx_"))
+        application.add_handler(CallbackQueryHandler(handle_repost_callback, pattern="^repost_"))
+        application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(menu_|movie_|series_|season_|episode_)"))
+        application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify_"))
+        application.add_handler(CallbackQueryHandler(video_callback, pattern="^video_"))
+        
+        # Handler de mensajes de texto
+        async def text_handler_with_auto_index(update, context):
+            await handle_repost_channel_input(update, context)
+            if await handle_title_input(update, context):
+                return
+            handled = await process_new_episode(update, context)
+            if not handled:
+                await handle_text_message(update, context)
+        
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.Regex(r'\d+[xX]\d+'),
+            index_episode_reply
+        ))
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            text_handler_with_auto_index
+        ))
+        
+        print("✅ Bot configurado, iniciando polling...")
+        
+        # Ejecutar bot en este event loop (sin signal handlers)
+        loop.run_until_complete(application.initialize())
+        loop.run_until_complete(application.start())
+        loop.run_until_complete(application.updater.start_polling(allowed_updates=Update.ALL_TYPES))
+        
+        print("✅ Bot ejecutándose correctamente")
+        
+        # Mantener el loop corriendo
+        loop.run_forever()
+        
     except Exception as e:
         print(f"❌ Error ejecutando bot: {e}")
         import traceback
