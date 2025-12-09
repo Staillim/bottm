@@ -60,6 +60,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             episode_id = int(callback_data.split("_")[1])
             await handle_episode_selection(update, context, episode_id)
         
+        # ==================== USAR TICKET ====================
+        
+        elif callback_data.startswith("use_ticket_"):
+            await handle_use_ticket(update, context, callback_data)
+        
         # ==================== CALLBACK DESCONOCIDO ====================
         
         else:
@@ -139,6 +144,7 @@ async def handle_episode_selection(update: Update, context: ContextTypes.DEFAULT
 
 async def send_movie_video(update: Update, context: ContextTypes.DEFAULT_TYPE, video):
     """Envía el video de la película al usuario"""
+    db = context.bot_data['db']
     query = update.callback_query
     user_id = update.effective_user.id
     
@@ -167,6 +173,7 @@ async def send_movie_video(update: Update, context: ContextTypes.DEFAULT_TYPE, v
 
 async def send_episode_video(update: Update, context: ContextTypes.DEFAULT_TYPE, episode, show):
     """Envía el video del episodio al usuario"""
+    db = context.bot_data['db']
     query = update.callback_query
     user_id = update.effective_user.id
     
@@ -255,3 +262,87 @@ async def show_episode_ad(update: Update, context: ContextTypes.DEFAULT_TYPE, ep
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
+
+async def handle_use_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE, callback_data: str):
+    """Maneja el uso de un ticket para ver contenido sin anuncio"""
+    db = context.bot_data['db']
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    # Parse callback: use_ticket_movie_{id} o use_ticket_episode_{id}
+    parts = callback_data.split("_")
+    content_type = parts[2]  # movie o episode
+    content_id = int(parts[3])
+    
+    try:
+        # Verificar que el usuario tiene tickets
+        user_tickets = await db.get_user_tickets(user_id)
+        if not user_tickets or user_tickets.tickets < 1:
+            await query.answer("❌ No tienes tickets disponibles", show_alert=True)
+            return
+        
+        if content_type == "movie":
+            video = await db.get_video_by_id(content_id)
+            if not video:
+                await query.edit_message_text("❌ Película no encontrada.")
+                return
+            
+            # Usar ticket
+            new_balance = await db.use_ticket(
+                user_id=user_id,
+                description=f"Usado para película: {video.title}"
+            )
+            
+            # Registrar actividad
+            await db.log_activity(user_id, 'watch', content_id, 'movie', used_ticket=True)
+            
+            # Enviar video
+            await context.bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=STORAGE_CHANNEL_ID,
+                message_id=video.message_id
+            )
+            
+            await query.edit_message_text(
+                f"✅ <b>{video.title}</b> enviada correctamente.\n\n"
+                f"🎟️ Ticket usado. Te quedan <b>{new_balance}</b> tickets.\n\n"
+                "¿Quieres buscar otra película?",
+                parse_mode='HTML'
+            )
+            
+        elif content_type == "episode":
+            episode = await db.get_episode_by_id(content_id)
+            if not episode:
+                await query.edit_message_text("❌ Episodio no encontrado.")
+                return
+            
+            show = await db.get_tv_show_by_id(episode.tv_show_id)
+            
+            # Usar ticket
+            episode_name = f"{show.name if show else 'Serie'} {episode.season_number}x{episode.episode_number:02d}"
+            new_balance = await db.use_ticket(
+                user_id=user_id,
+                description=f"Usado para episodio: {episode_name}"
+            )
+            
+            # Registrar actividad
+            await db.log_activity(user_id, 'watch', content_id, 'episode', used_ticket=True)
+            
+            # Enviar video
+            await context.bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=STORAGE_CHANNEL_ID,
+                message_id=episode.message_id
+            )
+            
+            await query.edit_message_text(
+                f"✅ <b>{show.name if show else 'Episodio'}</b>\n"
+                f"Temporada {episode.season_number}, Episodio {episode.episode_number}\n\n"
+                f"🎟️ Ticket usado. Te quedan <b>{new_balance}</b> tickets.\n\n"
+                "Enviado correctamente. ¿Quieres ver otro episodio?",
+                parse_mode='HTML'
+            )
+        
+    except Exception as e:
+        logger.error(f"Error usando ticket: {e}", exc_info=True)
+        await query.answer("❌ Error al usar el ticket", show_alert=True)

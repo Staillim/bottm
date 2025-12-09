@@ -1,7 +1,11 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select, or_, func, update
-from .models import Base, User, Video, Search, Favorite, AdToken, BotConfig, TvShow, Episode, UserNavigationState
+from .models import (
+    Base, User, Video, Search, Favorite, AdToken, BotConfig, 
+    TvShow, Episode, UserNavigationState,
+    UserTicket, TicketTransaction, Referral, UserActivity
+)
 from config.settings import DATABASE_URL
 import unicodedata
 import secrets
@@ -581,3 +585,308 @@ class DatabaseManager:
                 await session.delete(state)
                 await session.commit()
             return True
+
+    # ============ SISTEMA DE TICKETS ============
+    
+    async def get_user_tickets(self, user_id):
+        """Obtiene los tickets de un usuario"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserTicket).where(UserTicket.user_id == user_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def create_user_tickets(self, user_id):
+        """Crea registro de tickets para un usuario nuevo"""
+        async with self.async_session() as session:
+            user_ticket = UserTicket(user_id=user_id, tickets=0)
+            session.add(user_ticket)
+            await session.commit()
+            return user_ticket
+    
+    async def add_tickets(self, user_id, amount, reason, description=None, reference_id=None):
+        """Agrega tickets a un usuario y registra la transacción"""
+        async with self.async_session() as session:
+            # Obtener o crear registro de tickets
+            result = await session.execute(
+                select(UserTicket).where(UserTicket.user_id == user_id)
+            )
+            user_ticket = result.scalar_one_or_none()
+            
+            if not user_ticket:
+                user_ticket = UserTicket(user_id=user_id, tickets=0, tickets_earned=0, tickets_used=0)
+                session.add(user_ticket)
+            
+            # Actualizar tickets
+            user_ticket.tickets += amount
+            user_ticket.tickets_earned += amount
+            
+            # Registrar transacción
+            transaction = TicketTransaction(
+                user_id=user_id,
+                amount=amount,
+                reason=reason,
+                description=description,
+                reference_id=reference_id
+            )
+            session.add(transaction)
+            
+            await session.commit()
+            return user_ticket.tickets
+    
+    async def use_ticket(self, user_id, content_id, content_type='movie'):
+        """Usa un ticket para ver contenido sin anuncios"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserTicket).where(UserTicket.user_id == user_id)
+            )
+            user_ticket = result.scalar_one_or_none()
+            
+            if not user_ticket or user_ticket.tickets <= 0:
+                return False
+            
+            # Descontar ticket
+            user_ticket.tickets -= 1
+            user_ticket.tickets_used += 1
+            
+            # Registrar transacción
+            transaction = TicketTransaction(
+                user_id=user_id,
+                amount=-1,
+                reason='used',
+                description=f'Usado para ver {content_type}',
+                reference_id=content_id
+            )
+            session.add(transaction)
+            
+            # Registrar actividad
+            activity = UserActivity(
+                user_id=user_id,
+                action_type=f'watch_{content_type}',
+                content_id=content_id,
+                content_type=content_type,
+                used_ticket=True
+            )
+            session.add(activity)
+            
+            await session.commit()
+            return True
+    
+    async def get_ticket_transactions(self, user_id, limit=20):
+        """Obtiene historial de transacciones de tickets"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(TicketTransaction)
+                .where(TicketTransaction.user_id == user_id)
+                .order_by(TicketTransaction.created_at.desc())
+                .limit(limit)
+            )
+            return result.scalars().all()
+
+    # ============ SISTEMA DE REFERIDOS ============
+    
+    async def create_referral(self, referrer_id, referred_id):
+        """Crea un nuevo referido pendiente"""
+        async with self.async_session() as session:
+            # Verificar que no exista ya
+            result = await session.execute(
+                select(Referral).where(Referral.referred_id == referred_id)
+            )
+            existing = result.scalar_one_or_none()
+            if existing:
+                return None  # Ya fue referido por alguien
+            
+            referral = Referral(
+                referrer_id=referrer_id,
+                referred_id=referred_id,
+                status='pending'
+            )
+            session.add(referral)
+            await session.commit()
+            return referral
+    
+    async def get_referral_by_referred(self, referred_id):
+        """Obtiene el referido por el ID del usuario referido"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Referral).where(Referral.referred_id == referred_id)
+            )
+            return result.scalar_one_or_none()
+    
+    async def verify_referral(self, referred_id):
+        """Verifica un referido cuando se une al canal"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Referral).where(
+                    Referral.referred_id == referred_id,
+                    Referral.status == 'pending'
+                )
+            )
+            referral = result.scalar_one_or_none()
+            
+            if not referral:
+                return None
+            
+            referral.status = 'verified'
+            referral.verified_at = datetime.now(timezone.utc)
+            await session.commit()
+            return referral
+    
+    async def reward_referral(self, referred_id, tickets_reward=5):
+        """Recompensa al referrer cuando el referido se verifica"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Referral).where(
+                    Referral.referred_id == referred_id,
+                    Referral.status == 'verified'
+                )
+            )
+            referral = result.scalar_one_or_none()
+            
+            if not referral:
+                return None
+            
+            # Marcar como recompensado
+            referral.status = 'rewarded'
+            referral.rewarded_at = datetime.now(timezone.utc)
+            await session.commit()
+            
+            # Dar tickets al referrer
+            tickets = await self.add_tickets(
+                user_id=referral.referrer_id,
+                amount=tickets_reward,
+                reason='referral',
+                description=f'Referido verificado: {referred_id}',
+                reference_id=referred_id
+            )
+            
+            return referral.referrer_id, tickets
+    
+    async def get_user_referrals(self, referrer_id):
+        """Obtiene todos los referidos de un usuario"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Referral)
+                .where(Referral.referrer_id == referrer_id)
+                .order_by(Referral.referred_at.desc())
+            )
+            return result.scalars().all()
+    
+    async def get_referral_stats(self, referrer_id):
+        """Obtiene estadísticas de referidos de un usuario"""
+        async with self.async_session() as session:
+            # Total referidos
+            total = await session.execute(
+                select(func.count(Referral.id))
+                .where(Referral.referrer_id == referrer_id)
+            )
+            total_count = total.scalar()
+            
+            # Verificados
+            verified = await session.execute(
+                select(func.count(Referral.id))
+                .where(
+                    Referral.referrer_id == referrer_id,
+                    Referral.status.in_(['verified', 'rewarded'])
+                )
+            )
+            verified_count = verified.scalar()
+            
+            # Pendientes
+            pending = await session.execute(
+                select(func.count(Referral.id))
+                .where(
+                    Referral.referrer_id == referrer_id,
+                    Referral.status == 'pending'
+                )
+            )
+            pending_count = pending.scalar()
+            
+            return {
+                'total': total_count,
+                'verified': verified_count,
+                'pending': pending_count
+            }
+
+    # ============ ACTIVIDAD DE USUARIO ============
+    
+    async def log_activity(self, user_id, action_type, content_id=None, content_type=None, used_ticket=False):
+        """Registra una actividad del usuario"""
+        async with self.async_session() as session:
+            activity = UserActivity(
+                user_id=user_id,
+                action_type=action_type,
+                content_id=content_id,
+                content_type=content_type,
+                used_ticket=used_ticket
+            )
+            session.add(activity)
+            await session.commit()
+            return activity
+    
+    async def get_user_watch_history(self, user_id, limit=20):
+        """Obtiene historial de videos vistos por el usuario"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(UserActivity)
+                .where(
+                    UserActivity.user_id == user_id,
+                    UserActivity.action_type.in_(['watch_movie', 'watch_episode'])
+                )
+                .order_by(UserActivity.created_at.desc())
+                .limit(limit)
+            )
+            return result.scalars().all()
+
+    # ============ ESTADÍSTICAS ADMIN ============
+    
+    async def get_global_stats(self):
+        """Obtiene estadísticas globales para el dashboard admin"""
+        async with self.async_session() as session:
+            # Total usuarios
+            total_users = await session.execute(select(func.count(User.id)))
+            
+            # Usuarios verificados
+            verified_users = await session.execute(
+                select(func.count(User.id)).where(User.verified == True)
+            )
+            
+            # Total videos indexados
+            total_videos = await session.execute(select(func.count(Video.id)))
+            
+            # Total series
+            total_series = await session.execute(select(func.count(TvShow.id)))
+            
+            # Total episodios
+            total_episodes = await session.execute(select(func.count(Episode.id)))
+            
+            # Total tickets en circulación
+            total_tickets = await session.execute(
+                select(func.sum(UserTicket.tickets))
+            )
+            
+            # Total tickets usados
+            tickets_used = await session.execute(
+                select(func.sum(UserTicket.tickets_used))
+            )
+            
+            # Total referidos
+            total_referrals = await session.execute(select(func.count(Referral.id)))
+            
+            # Referidos verificados
+            verified_referrals = await session.execute(
+                select(func.count(Referral.id))
+                .where(Referral.status.in_(['verified', 'rewarded']))
+            )
+            
+            return {
+                'total_users': total_users.scalar() or 0,
+                'verified_users': verified_users.scalar() or 0,
+                'total_videos': total_videos.scalar() or 0,
+                'total_series': total_series.scalar() or 0,
+                'total_episodes': total_episodes.scalar() or 0,
+                'tickets_available': total_tickets.scalar() or 0,
+                'tickets_used': tickets_used.scalar() or 0,
+                'total_referrals': total_referrals.scalar() or 0,
+                'verified_referrals': verified_referrals.scalar() or 0
+            }

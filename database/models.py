@@ -122,3 +122,53 @@ class BotConfig(Base):
     key = Column(String(100), unique=True, nullable=False)  # Ej: 'last_indexed_message'
     value = Column(String(500), nullable=False)  # Valor como string
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+# ============ SISTEMA DE TICKETS Y REFERIDOS ============
+
+class UserTicket(Base):
+    """Tickets del usuario para ver contenido sin anuncios"""
+    __tablename__ = 'user_tickets'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, unique=True, nullable=False)
+    tickets = Column(Integer, default=0)  # Tickets disponibles
+    tickets_used = Column(Integer, default=0)  # Total tickets usados
+    tickets_earned = Column(Integer, default=0)  # Total tickets ganados
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+class TicketTransaction(Base):
+    """Historial de transacciones de tickets"""
+    __tablename__ = 'ticket_transactions'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, nullable=False)
+    amount = Column(Integer, nullable=False)  # Positivo = ganado, Negativo = usado
+    reason = Column(String(100), nullable=False)  # 'referral', 'admin_gift', 'used', 'task'
+    description = Column(String(500))  # Descripción adicional
+    reference_id = Column(BigInteger)  # ID del referido, video, o admin
+    created_at = Column(DateTime, server_default=func.now())
+
+class Referral(Base):
+    """Sistema de referidos"""
+    __tablename__ = 'referrals'
+    
+    id = Column(Integer, primary_key=True)
+    referrer_id = Column(BigInteger, nullable=False)  # Quien invitó
+    referred_id = Column(BigInteger, unique=True, nullable=False)  # Quien fue invitado
+    status = Column(String(20), default='pending')  # pending, verified, rewarded
+    referred_at = Column(DateTime, server_default=func.now())
+    verified_at = Column(DateTime)  # Cuando el referido se verificó en el canal
+    rewarded_at = Column(DateTime)  # Cuando se dieron los tickets al referrer
+
+class UserActivity(Base):
+    """Registro de actividad del usuario"""
+    __tablename__ = 'user_activity'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, nullable=False)
+    action_type = Column(String(50), nullable=False)  # 'search', 'watch_movie', 'watch_episode', 'ad_viewed'
+    content_id = Column(Integer)  # ID del video/episodio
+    content_type = Column(String(20))  # 'movie', 'episode'
+    used_ticket = Column(Boolean, default=False)  # Si usó ticket para ver sin anuncio
+    created_at = Column(DateTime, server_default=func.now())
