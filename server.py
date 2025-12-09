@@ -323,6 +323,13 @@ def run_telegram_bot():
         from handlers.admin_menu import admin_menu_command, admin_callback_handler, process_new_episode
         from handlers.indexing_callbacks import handle_title_input, handle_indexing_callback
         from handlers.broadcast import broadcast_menu_command, handle_broadcast_callback, handle_custom_message_input
+        from handlers.tickets import (
+            mis_tickets_command, invitar_command, mis_referidos_command,
+            handle_tickets_callback
+        )
+        from handlers.admin_users import (
+            admin_users_command, handle_admin_user_callback, handle_admin_user_input
+        )
         from telegram.ext import CommandHandler, CallbackQueryHandler, MessageHandler, filters
         
         # Inicializar base de datos
@@ -373,19 +380,29 @@ def run_telegram_bot():
         application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))
         application.add_handler(CommandHandler("stats", stats_command))
         
+        # Comandos de tickets y referidos
+        application.add_handler(CommandHandler("mistickets", mis_tickets_command))
+        application.add_handler(CommandHandler("invitar", invitar_command))
+        application.add_handler(CommandHandler("misreferidos", mis_referidos_command))
+        application.add_handler(CommandHandler("usuarios", admin_users_command))
+        
         # Handlers de callbacks
         application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
         application.add_handler(CallbackQueryHandler(handle_broadcast_callback, pattern="^broadcast_"))
         application.add_handler(CallbackQueryHandler(handle_indexing_callback, pattern="^idx_"))
         application.add_handler(CallbackQueryHandler(handle_reindex_callback, pattern="^ridx_"))
         application.add_handler(CallbackQueryHandler(handle_repost_callback, pattern="^repost_"))
-        application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(menu_|movie_|series_|season_|episode_)"))
+        application.add_handler(CallbackQueryHandler(handle_tickets_callback, pattern="^tickets_"))
+        application.add_handler(CallbackQueryHandler(handle_admin_user_callback, pattern="^admu_"))
+        application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(menu_|movie_|series_|season_|episode_|use_ticket_)"))
         application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify_"))
         application.add_handler(CallbackQueryHandler(video_callback, pattern="^video_"))
         
         # Handler de mensajes de texto
         async def text_handler_with_auto_index(update, context):
             await handle_repost_channel_input(update, context)
+            if await handle_admin_user_input(update, context):
+                return
             if await handle_custom_message_input(update, context):
                 return
             if await handle_title_input(update, context):
