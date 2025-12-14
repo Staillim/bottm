@@ -1,5 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from utils.verification import is_user_member
+from config.settings import VERIFICATION_CHANNEL_USERNAME
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -7,6 +9,19 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db = context.bot_data['db']
         
         print(f"🔍 Comando /buscar recibido de {user.id}: {context.args}")
+        
+        # Verificar membresía
+        if not await is_user_member(user.id, context):
+            keyboard = [[InlineKeyboardButton(
+                "✅ Unirse al Canal",
+                url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}"
+            )]]
+            await update.message.reply_text(
+                "❌ Debes estar verificado para usar este comando.\n\n"
+                "Únete al canal y luego usa /start para verificarte.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
         
         # Obtener término de búsqueda
         if not context.args:

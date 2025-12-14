@@ -1,5 +1,7 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from utils.verification import is_user_member
+from config.settings import VERIFICATION_CHANNEL_USERNAME
 from handlers.tickets import process_referral_start, check_and_reward_referral
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -36,8 +38,23 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             video_msg_id = int(arg.split("_")[1])
             print(f"🎬 Procesando video con message_id: {video_msg_id}")
             
-            # Enviar video directamente
-            print(f"✅ Enviando video...")
+            # Verificar membresía primero
+            if not await is_user_member(user.id, context):
+                keyboard = [
+                    [InlineKeyboardButton("✅ Unirse al Canal", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}")],
+                    [InlineKeyboardButton("🔄 Verificar y Ver Video", callback_data=f"verify_video_{video_msg_id}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    f"⚠️ Primero debes unirte al canal para ver este video.\n\n"
+                    f"Únete a {VERIFICATION_CHANNEL_USERNAME} y presiona verificar.",
+                    reply_markup=reply_markup
+                )
+                return
+            
+            # Usuario verificado - buscar y enviar video
+            print(f"✅ Usuario verificado, enviando video...")
             await send_video_by_message_id(update, context, video_msg_id, user.id)
             return
     
@@ -49,7 +66,22 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             series_id = int(arg.split("_")[1])
             print(f"📺 Procesando serie con ID: {series_id}")
             
-            # Marcar usuario como verificado automáticamente
+            # Verificar membresía primero
+            if not await is_user_member(user.id, context):
+                keyboard = [
+                    [InlineKeyboardButton("✅ Unirse al Canal", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}")],
+                    [InlineKeyboardButton("🔄 Verificar Membresía", callback_data="verify_membership")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    f"⚠️ Primero debes unirte al canal para ver esta serie.\n\n"
+                    f"Únete a {VERIFICATION_CHANNEL_USERNAME} y presiona verificar.",
+                    reply_markup=reply_markup
+                )
+                return
+            
+            # Usuario verificado - actualizar verificación
             await db.update_user_verification(user.id, True)
             
             # Obtener serie y temporadas
@@ -95,12 +127,29 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
     
-    # Marcar usuario como verificado automáticamente
-    await db.update_user_verification(user.id, True)
+    # Verificar membresía
+    is_member = await is_user_member(user.id, context)
     
-    # Mostrar menú interactivo de películas/series
-    from handlers.menu import main_menu
-    await main_menu(update, context)
+    if not is_member:
+        keyboard = [
+            [InlineKeyboardButton("✅ Unirse al Canal", url=f"https://t.me/{VERIFICATION_CHANNEL_USERNAME.strip('@')}")],
+            [InlineKeyboardButton("🔄 Verificar Membresía", callback_data="verify_membership")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"👋 ¡Hola {user.first_name}!\n\n"
+            f"Para usar este bot, debes unirte a nuestro canal oficial:\n"
+            f"{VERIFICATION_CHANNEL_USERNAME}\n\n"
+            f"Una vez que te hayas unido, presiona el botón de verificación.",
+            reply_markup=reply_markup
+        )
+    else:
+        await db.update_user_verification(user.id, True)
+        
+        # Mostrar menú interactivo de películas/series
+        from handlers.menu import main_menu
+        await main_menu(update, context)
 
 async def send_video_by_message_id(update, context, video_msg_id, user_id):
     """Envía Mini App con anuncio o directo si tiene tickets"""
@@ -288,44 +337,69 @@ async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("verify_video_"):
         video_msg_id = int(query.data.split("_")[2])
         
-        await db.update_user_verification(user.id, True)
-        await query.edit_message_text("✅ Enviando película...")
+        is_member = await is_user_member(user.id, context)
         
-        # Verificar y recompensar referido si aplica
-        reward_result = await check_and_reward_referral(user.id, db)
-        if reward_result:
-            referrer_id, tickets = reward_result
-            try:
-                await context.bot.send_message(
-                    chat_id=referrer_id,
-                    text=f"🎉 <b>¡Felicidades!</b>\n\n"
-                         f"Tu referido <b>{user.first_name}</b> se verificó.\n"
-                         f"Recibiste <b>+{tickets} tickets</b> 🎟️\n\n"
-                         f"Usa /mistickets para ver tu balance.",
-                    parse_mode='HTML'
-                )
-            except Exception as e:
-                print(f"Error notificando referrer: {e}")
-        
-        # Enviar el video
-        await send_video_by_message_id(query, context, video_msg_id, user.id)
+        if is_member:
+            await db.update_user_verification(user.id, True)
+            await query.edit_message_text("✅ Verificado! Enviando película...")
+            
+            # Verificar y recompensar referido si aplica
+            reward_result = await check_and_reward_referral(user.id, db)
+            if reward_result:
+                referrer_id, tickets = reward_result
+                try:
+                    await context.bot.send_message(
+                        chat_id=referrer_id,
+                        text=f"🎉 <b>¡Felicidades!</b>\n\n"
+                             f"Tu referido <b>{user.first_name}</b> se verificó.\n"
+                             f"Recibiste <b>+{tickets} tickets</b> 🎟️\n\n"
+                             f"Usa /mistickets para ver tu balance.",
+                        parse_mode='HTML'
+                    )
+                except Exception as e:
+                    print(f"Error notificando referrer: {e}")
+            
+            # Enviar el video
+            await send_video_by_message_id(query, context, video_msg_id, user.id)
+        else:
+            await query.edit_message_text(
+                "❌ Aún no te has unido al canal.\n"
+                "Por favor únete primero y vuelve a presionar el botón."
+            )
         return
     
     # Verificar si viene desde "Ver Ahora" (episodio)
     if query.data.startswith("verify_episode_"):
         episode_id = int(query.data.split("_")[2])
         
-        await db.update_user_verification(user.id, True)
-        await query.edit_message_text("✅ Enviando episodio...")
+        is_member = await is_user_member(user.id, context)
         
-        # Enviar el episodio
-        await send_episode_by_id(query, context, episode_id, user.id)
+        if is_member:
+            await db.update_user_verification(user.id, True)
+            await query.edit_message_text("✅ Verificado! Enviando episodio...")
+            
+            # Enviar el episodio
+            await send_episode_by_id(query, context, episode_id, user.id)
+        else:
+            await query.edit_message_text(
+                "❌ Aún no te has unido al canal.\n"
+                "Por favor únete primero y vuelve a presionar el botón."
+            )
         return
     
-    # Verificación normal (ahora solo marca como verificado)
-    await db.update_user_verification(user.id, True)
-    await query.edit_message_text(
-        f"✅ ¡Bienvenido!\n\n"
-        f"Ahora puedes usar el bot para buscar videos.\n\n"
-        f"Usa /buscar <término> para comenzar."
-    )
+    # Verificación normal
+    is_member = await is_user_member(user.id, context)
+    
+    if is_member:
+        await db.update_user_verification(user.id, True)
+        await query.edit_message_text(
+            f"✅ ¡Verificación exitosa!\n\n"
+            f"Ahora puedes usar el bot para buscar videos.\n\n"
+            f"Usa /buscar <término> para comenzar."
+        )
+    else:
+        await query.edit_message_text(
+            f"❌ Aún no eres miembro del canal.\n\n"
+            f"Por favor únete primero y luego presiona verificar nuevamente.",
+            reply_markup=query.message.reply_markup
+        )
