@@ -153,7 +153,8 @@ async def send_movie_video(update: Update, context: ContextTypes.DEFAULT_TYPE, v
         await context.bot.copy_message(
             chat_id=user_id,
             from_chat_id=STORAGE_CHANNEL_ID,
-            message_id=video.message_id
+            message_id=video.message_id,
+            protect_content=True
         )
         
         # Registrar la búsqueda
@@ -182,7 +183,8 @@ async def send_episode_video(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await context.bot.copy_message(
             chat_id=user_id,
             from_chat_id=STORAGE_CHANNEL_ID,
-            message_id=episode.message_id
+            message_id=episode.message_id,
+            protect_content=True
         )
         
         # Registrar la búsqueda (usando el nombre de la serie + episodio)
@@ -300,7 +302,8 @@ async def handle_use_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await context.bot.copy_message(
                 chat_id=user_id,
                 from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=video.message_id
+                message_id=video.message_id,
+                protect_content=True
             )
             
             await query.edit_message_text(
@@ -332,7 +335,8 @@ async def handle_use_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await context.bot.copy_message(
                 chat_id=user_id,
                 from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=episode.message_id
+                message_id=episode.message_id,
+                protect_content=True
             )
             
             await query.edit_message_text(
