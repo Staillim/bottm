@@ -14,7 +14,7 @@ import os
 import sys
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=['https://bottm.netlify.app', 'http://localhost:5000', '*'])
 # Inicializar base de datos
 db = None
 
