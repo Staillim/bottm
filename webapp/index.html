@@ -490,6 +490,9 @@
         let allMovies = [];
         let currentMovie = null;
         let BOT_USERNAME = 'CineStelar_bot'; // Se actualizará desde la API
+        
+        // URL de la API - Detectar automáticamente o usar Render
+        // Si estamos en Netlify, las llamadas /api/* se redirigen a Render via netlify.toml
         const API_BASE = window.location.origin;
 
         // Cargar películas al iniciar

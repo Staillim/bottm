@@ -3,7 +3,27 @@
   publish = "webapp"
   command = "echo 'No build needed'"
 
+# Página principal - Catálogo
 [[redirects]]
-  from = "/*"
+  from = "/"
+  to = "/index.html"
+  status = 200
+
+# Catálogo alternativo
+[[redirects]]
+  from = "/catalog"
+  to = "/index.html"
+  status = 200
+
+# Ad viewer
+[[redirects]]
+  from = "/ad_viewer.html"
   to = "/ad_viewer.html"
   status = 200
+
+# Proxy API calls to Render backend
+[[redirects]]
+  from = "/api/*"
+  to = "https://cinestelar-bot.onrender.com/api/:splat"
+  status = 200
+  force = true
