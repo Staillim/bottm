@@ -8,7 +8,7 @@ import asyncio
 import threading
 from database.db_manager import DatabaseManager
 from telegram import Bot
-from config.settings import BOT_TOKEN, STORAGE_CHANNEL_ID, FLASK_PORT
+from config.settings import BOT_TOKEN, STORAGE_CHANNEL_ID, FLASK_PORT, BOT_USERNAME
 from sqlalchemy import text
 import os
 import sys
@@ -70,6 +70,93 @@ async def init_db():
 def serve_webapp():
     """Sirve la Mini App de anuncios (versión simplificada)"""
     return send_file('webapp/ad_viewer_simple.html')
+
+@app.route('/catalog')
+@app.route('/webapp')
+def serve_catalog():
+    """Sirve la Mini App del catálogo de películas"""
+    return send_file('webapp/index.html')
+
+@app.route('/api/movies')
+def get_movies():
+    """Obtiene todas las películas indexadas para la Mini App"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        local_db = DatabaseManager()
+        loop.run_until_complete(local_db.init_db())
+        
+        # Obtener películas
+        movies = loop.run_until_complete(local_db.get_all_videos())
+        
+        movies_list = []
+        for movie in movies:
+            movies_list.append({
+                'id': movie.id,
+                'title': movie.title,
+                'year': movie.year,
+                'overview': movie.overview,
+                'poster_url': movie.poster_url,
+                'backdrop_url': movie.backdrop_url,
+                'rating': float(movie.rating) if movie.rating else None,
+                'genres': movie.genres.split(',') if movie.genres else [],
+                'type': 'movie',
+                'message_id': movie.message_id
+            })
+        
+        return jsonify({
+            'movies': movies_list,
+            'total': len(movies_list),
+            'bot_username': BOT_USERNAME.replace('@', '')
+        })
+    except Exception as e:
+        print(f"Error getting movies: {e}")
+        return jsonify({'error': str(e), 'movies': []}), 500
+    finally:
+        try:
+            loop.run_until_complete(local_db.engine.dispose())
+        except:
+            pass
+        loop.close()
+
+@app.route('/api/movie/<int:movie_id>')
+def get_movie_details(movie_id):
+    """Obtiene los detalles de una película específica"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        local_db = DatabaseManager()
+        loop.run_until_complete(local_db.init_db())
+        
+        movie = loop.run_until_complete(local_db.get_video_by_id(movie_id))
+        
+        if not movie:
+            return jsonify({'error': 'Película no encontrada'}), 404
+        
+        return jsonify({
+            'id': movie.id,
+            'title': movie.title,
+            'year': movie.year,
+            'overview': movie.overview,
+            'poster_url': movie.poster_url,
+            'backdrop_url': movie.backdrop_url,
+            'rating': float(movie.rating) if movie.rating else None,
+            'genres': movie.genres.split(',') if movie.genres else [],
+            'type': 'movie',
+            'message_id': movie.message_id,
+            'bot_username': BOT_USERNAME.replace('@', '')
+        })
+    except Exception as e:
+        print(f"Error getting movie: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        try:
+            loop.run_until_complete(local_db.engine.dispose())
+        except:
+            pass
+        loop.close()
 
 def process_video_delivery(user_id, content_id, content_type='movie'):
     """Procesa el envío del video/episodio en segundo plano"""

@@ -213,6 +213,14 @@ class DatabaseManager:
             )
             return result.scalar_one_or_none()
     
+    async def get_all_videos(self, limit=500):
+        """Obtiene todas las películas para el catálogo de la Mini App"""
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(Video).order_by(Video.id.desc()).limit(limit)
+            )
+            return result.scalars().all()
+    
     async def log_search(self, user_id, query, results_count):
         async with self.async_session() as session:
             search = Search(user_id=user_id, query=query, results_count=results_count)
