@@ -491,8 +491,8 @@
         let currentMovie = null;
         let BOT_USERNAME = 'CineStelar_bot'; // Se actualizará desde la API
         
-        // URL de la API - Render backend directamente
-        const API_BASE = 'https://cinestelar-bot.onrender.com';
+        // URL de la API - Netlify Functions
+        const API_BASE = window.location.origin;
 
         // Cargar películas al iniciar
         document.addEventListener('DOMContentLoaded', () => {
@@ -530,7 +530,7 @@
 
         async function loadMovies() {
             try {
-                const response = await fetch(`${API_BASE}/api/movies`);
+                const response = await fetch(`${API_BASE}/.netlify/functions/get-movies`);
                 if (!response.ok) throw new Error('Error loading movies');
                 
                 const data = await response.json();

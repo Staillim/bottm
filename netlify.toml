@@ -2,6 +2,7 @@
 [build]
   publish = "webapp"
   command = "echo 'No build needed'"
+  functions = "netlify/functions"
 
 # Página principal - Catálogo
 [[redirects]]
@@ -20,10 +21,3 @@
   from = "/ad_viewer.html"
   to = "/ad_viewer.html"
   status = 200
-
-# Proxy API calls to Render backend
-[[redirects]]
-  from = "/api/*"
-  to = "https://cinestelar-bot.onrender.com/api/:splat"
-  status = 200
-  force = true
