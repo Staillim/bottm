@@ -149,6 +149,11 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error durante indexación: {str(e)}")
         if user.id in indexing_sessions:
+            # Limpiar completamente la sesión en caso de error
+            indexing_sessions[user.id].awaiting_title_input = False
+            indexing_sessions[user.id].current_message_id = None
+            indexing_sessions[user.id].current_video_data = None
+            indexing_sessions[user.id].search_results = None
             del indexing_sessions[user.id]
 
 async def process_video_with_confirmation(update, context, msg, msg_id, tmdb, db, session):
@@ -251,8 +256,13 @@ async def finalize_indexing(update, context, session, last_msg_id, db):
         parse_mode='HTML'
     )
     
-    # Limpiar sesión
+    # Limpiar completamente la sesión
     if user_id in indexing_sessions:
+        # Asegurar que no se quede esperando input
+        indexing_sessions[user_id].awaiting_title_input = False
+        indexing_sessions[user_id].current_message_id = None
+        indexing_sessions[user_id].current_video_data = None
+        indexing_sessions[user_id].search_results = None
         del indexing_sessions[user_id]
 
 async def indexar_manual_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

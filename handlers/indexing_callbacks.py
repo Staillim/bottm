@@ -426,6 +426,11 @@ async def stop_indexing(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Errores: {session.stats['errors']}\n"
             f"📍 Último mensaje: {session.current_message_id or 'N/A'}"
         )
+        # Limpiar completamente la sesión
+        session.awaiting_title_input = False
+        session.current_message_id = None
+        session.current_video_data = None
+        session.search_results = None
         del indexing_sessions[user_id]
     else:
         stats_text = "🛑 Indexación detenida."
