@@ -45,8 +45,8 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tmdb = TMDBApi()
     current_id = start_id
     consecutive_empty = 0
-    max_empty = 10
-    max_scan = 2000
+    max_empty = 10  # Mensajes vacíos consecutivos antes de parar
+    max_scan = 50   # Máximo de mensajes a escanear en total
     
     try:
         for offset in range(max_scan):
