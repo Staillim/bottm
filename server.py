@@ -82,6 +82,7 @@ def get_movies():
     """Obtiene todas las películas indexadas para la Mini App"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    local_db = None
     
     try:
         local_db = DatabaseManager()
@@ -92,30 +93,37 @@ def get_movies():
         
         movies_list = []
         for movie in movies:
-            movies_list.append({
-                'id': movie.id,
-                'title': movie.title,
-                'year': movie.year,
-                'overview': movie.overview,
-                'poster_url': movie.poster_url,
-                'backdrop_url': movie.backdrop_url,
-                'rating': float(movie.rating) if movie.rating else None,
-                'genres': movie.genres.split(',') if movie.genres else [],
-                'type': 'movie',
-                'message_id': movie.message_id
-            })
+            try:
+                movies_list.append({
+                    'id': movie.id,
+                    'title': movie.title or 'Sin título',
+                    'year': movie.year,
+                    'overview': movie.overview or '',
+                    'poster_url': movie.poster_url or '',
+                    'backdrop_url': getattr(movie, 'backdrop_url', '') or '',
+                    'rating': float(movie.rating) if movie.rating else None,
+                    'genres': movie.genres.split(',') if movie.genres else [],
+                    'type': 'movie',
+                    'message_id': movie.message_id
+                })
+            except Exception as movie_err:
+                print(f"Error procesando película {movie.id}: {movie_err}")
+                continue
         
         return jsonify({
             'movies': movies_list,
             'total': len(movies_list),
-            'bot_username': BOT_USERNAME.replace('@', '')
+            'bot_username': BOT_USERNAME.replace('@', '') if BOT_USERNAME else 'CineStelar_bot'
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Error getting movies: {e}")
         return jsonify({'error': str(e), 'movies': []}), 500
     finally:
         try:
-            loop.run_until_complete(local_db.engine.dispose())
+            if local_db:
+                loop.run_until_complete(local_db.engine.dispose())
         except:
             pass
         loop.close()
