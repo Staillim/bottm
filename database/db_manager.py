@@ -160,11 +160,18 @@ class DatabaseManager:
             
             # Normalizar la búsqueda
             normalized_query = self.normalize_text(query)
-            search_terms = normalized_query.split()  # Separar palabras para mejor búsqueda
             
-            # Buscar solo primeros 500 videos (optimización)
+            # Filtrar palabras muy cortas (stopwords)
+            stopwords = {'de', 'la', 'el', 'y', 'en', 'a', 'los', 'las', 'un', 'una', 'del', 'al'}
+            search_terms = [term for term in normalized_query.split() if len(term) >= 3 and term not in stopwords]
+            
+            # Si no hay términos válidos después de filtrar, usar la query completa
+            if not search_terms:
+                search_terms = normalized_query.split()
+            
+            # Buscar solo primeros 1000 videos (aumentado para mejor cobertura)
             result = await session.execute(
-                select(Video).order_by(Video.added_at.desc()).limit(500)
+                select(Video).order_by(Video.added_at.desc()).limit(1000)
             )
             all_videos = result.scalars().all()
             
@@ -179,27 +186,34 @@ class DatabaseManager:
                 
                 # Calcular score de relevancia
                 score = 0
+                matches = 0  # Contador de términos que coinciden
                 
-                # Búsqueda exacta en título vale más
+                # Búsqueda exacta completa en título (máxima prioridad)
                 if normalized_query in norm_title:
-                    score += 10
+                    score += 100
+                    matches = len(search_terms)
                 
-                # Título original también importante
+                # Búsqueda exacta en título original
                 if normalized_query in norm_original:
-                    score += 8
-                    
-                # Términos individuales en título
-                for term in search_terms:
-                    if term in norm_title:
-                        score += 3
-                    if term in norm_original:
-                        score += 2
-                    if term in norm_desc:
-                        score += 1
-                    if term in norm_tags:
-                        score += 1
+                    score += 80
+                    matches = len(search_terms)
                 
-                if score > 0:
+                # Términos individuales en título (solo si coinciden)
+                for term in search_terms:
+                    if len(term) >= 3:  # Solo términos de 3+ caracteres
+                        if term in norm_title:
+                            score += 10
+                            matches += 1
+                        if term in norm_original:
+                            score += 8
+                            matches += 1
+                
+                # Bonus si coinciden todos los términos en el título
+                if matches >= len(search_terms) and len(search_terms) > 1:
+                    score += 50
+                
+                # Solo agregar si tiene score significativo y al menos 1 coincidencia
+                if score > 0 and matches > 0:
                     matching_videos.append((score, video))
             
             # Ordenar por score y retornar top resultados
@@ -434,10 +448,16 @@ class DatabaseManager:
                 return result.scalars().all()
             
             normalized_query = self.normalize_text(query)
-            search_terms = normalized_query.split()
+            
+            # Filtrar palabras muy cortas (stopwords)
+            stopwords = {'de', 'la', 'el', 'y', 'en', 'a', 'los', 'las', 'un', 'una', 'del', 'al'}
+            search_terms = [term for term in normalized_query.split() if len(term) >= 3 and term not in stopwords]
+            
+            if not search_terms:
+                search_terms = normalized_query.split()
             
             result = await session.execute(
-                select(TvShow).order_by(TvShow.added_at.desc()).limit(500)
+                select(TvShow).order_by(TvShow.added_at.desc()).limit(1000)
             )
             all_shows = result.scalars().all()
             
@@ -447,19 +467,32 @@ class DatabaseManager:
                 norm_original = self.normalize_text(show.original_name or "")
                 
                 score = 0
+                matches = 0
                 
+                # Búsqueda exacta completa
                 if normalized_query in norm_name:
-                    score += 10
+                    score += 100
+                    matches = len(search_terms)
                 if normalized_query in norm_original:
-                    score += 8
+                    score += 80
+                    matches = len(search_terms)
                 
+                # Términos individuales
                 for term in search_terms:
-                    if term in norm_name:
-                        score += 3
-                    if term in norm_original:
-                        score += 2
+                    if len(term) >= 3:
+                        if term in norm_name:
+                            score += 10
+                            matches += 1
+                        if term in norm_original:
+                            score += 8
+                            matches += 1
                 
-                if score > 0:
+                # Bonus por todos los términos
+                if matches >= len(search_terms) and len(search_terms) > 1:
+                    score += 50
+                
+                # Solo agregar si tiene score y coincidencias
+                if score > 0 and matches > 0:
                     matching_shows.append((score, show))
             
             matching_shows.sort(key=lambda x: x[0], reverse=True)
