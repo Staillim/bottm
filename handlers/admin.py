@@ -652,8 +652,7 @@ async def reindexar_titulos_command(update: Update, context: ContextTypes.DEFAUL
             parse_mode='HTML'
         )
         print(f"✅ Mensaje inicial enviado")
-    
-    try:
+        
         # Obtener todos los videos
         videos = await db.get_all_videos(limit=10000)
         total = len(videos)
