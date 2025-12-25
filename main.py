@@ -14,7 +14,7 @@ from handlers.start import start_command, verify_callback
 from handlers.search import search_command, video_callback
 from handlers.admin import (
     indexar_command, stats_command, indexar_manual_command, 
-    reindexar_command, handle_reindex_callback
+    reindexar_command, handle_reindex_callback, reindexar_titulos_command
 )
 from handlers.repost import (
     repost_command, handle_repost_callback, handle_repost_channel_input
@@ -60,6 +60,7 @@ async def help_command(update, context):
 /indexar - Indexar nuevas peliculas automaticamente
 /indexar_manual <msg_id> - Indexar pelicula especifica
 /reindexar <msg_id> - Re-indexar pelicula existente
+/reindexar_titulos - Actualizar todos los títulos con captions originales
 /repost - Re-publicar videos antiguos en nuevo canal
 /indexar_serie <serie> - Indexar nueva serie
 /terminar_indexacion - Finalizar indexacion de serie
@@ -104,6 +105,7 @@ def main():
     application.add_handler(CommandHandler("indexar", indexar_command))
     application.add_handler(CommandHandler("indexar_manual", indexar_manual_command))
     application.add_handler(CommandHandler("reindexar", reindexar_command))
+    application.add_handler(CommandHandler("reindexar_titulos", reindexar_titulos_command))
     application.add_handler(CommandHandler("repost", repost_command))
     application.add_handler(CommandHandler("indexar_serie", index_series_command))
     application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))

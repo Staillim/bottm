@@ -632,3 +632,112 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Funcionalidad en desarrollo...",
         parse_mode='Markdown'
     )
+
+async def reindexar_titulos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Actualiza todos los títulos de videos con los captions originales del canal"""
+    user = update.effective_user
+    
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+        return
+    
+    db = context.bot_data['db']
+    
+    msg = await update.message.reply_text(
+        "🔄 <b>Actualizando títulos...</b>\n\n"
+        "⏳ Obteniendo videos de la base de datos...",
+        parse_mode='HTML'
+    )
+    
+    try:
+        # Obtener todos los videos
+        videos = await db.get_all_videos(limit=10000)
+        total = len(videos)
+        
+        if total == 0:
+            await msg.edit_text("❌ No hay videos en la base de datos.")
+            return
+        
+        await msg.edit_text(
+            f"🔄 <b>Iniciando actualización</b>\n\n"
+            f"📊 Total de videos: {total}\n"
+            f"⏳ Procesando...",
+            parse_mode='HTML'
+        )
+        
+        updated = 0
+        errors = 0
+        skipped = 0
+        
+        for idx, video in enumerate(videos, 1):
+            try:
+                # Obtener mensaje original del canal de almacenamiento
+                try:
+                    msg_from_channel = await context.bot.forward_message(
+                        chat_id=user.id,
+                        from_chat_id=STORAGE_CHANNEL_ID,
+                        message_id=video.message_id
+                    )
+                    
+                    # Borrar mensaje reenviado
+                    try:
+                        await context.bot.delete_message(
+                            chat_id=user.id,
+                            message_id=msg_from_channel.message_id
+                        )
+                    except:
+                        pass
+                    
+                    # Obtener caption original
+                    original_caption = msg_from_channel.caption
+                    
+                    if not original_caption or original_caption.strip() == "":
+                        skipped += 1
+                        continue
+                    
+                    # Actualizar solo si el título es diferente
+                    if video.title != original_caption:
+                        await db.update_video_title(video.message_id, original_caption)
+                        updated += 1
+                        print(f"✅ Actualizado: {video.title} → {original_caption}")
+                    else:
+                        skipped += 1
+                        
+                except Exception as e:
+                    print(f"⚠️ Error obteniendo mensaje {video.message_id}: {e}")
+                    errors += 1
+                    continue
+                
+                # Actualizar progreso cada 10 videos
+                if idx % 10 == 0 or idx == total:
+                    await msg.edit_text(
+                        f"🔄 <b>Actualizando títulos...</b>\n\n"
+                        f"📊 Progreso: {idx}/{total}\n"
+                        f"✅ Actualizados: {updated}\n"
+                        f"⏭️ Sin cambios: {skipped}\n"
+                        f"❌ Errores: {errors}",
+                        parse_mode='HTML'
+                    )
+                
+                # Pausa pequeña para no saturar la API
+                await asyncio.sleep(0.1)
+                
+            except Exception as e:
+                print(f"❌ Error procesando video {video.id}: {e}")
+                errors += 1
+                continue
+        
+        # Mensaje final
+        await msg.edit_text(
+            f"✅ <b>Actualización completada</b>\n\n"
+            f"📊 Total procesados: {total}\n"
+            f"✅ Actualizados: {updated}\n"
+            f"⏭️ Sin cambios: {skipped}\n"
+            f"❌ Errores: {errors}",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        await msg.edit_text(
+            f"❌ Error durante la actualización: {str(e)}"
+        )

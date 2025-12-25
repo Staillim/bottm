@@ -365,6 +365,10 @@ class DatabaseManager:
             print(f"❌ Error al actualizar video {message_id}: {e}")
             return False
     
+    async def update_video_title(self, message_id, new_title):
+        """Actualiza solo el título de un video"""
+        return await self.update_video(message_id, title=new_title)
+    
     async def get_config(self, key, default=None):
         """Obtiene un valor de configuración de la base de datos"""
         async with self.async_session() as session:
