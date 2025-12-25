@@ -161,11 +161,14 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.edit_message_text("❌ Error: Datos de película no encontrados.")
             return
         
+        # Usar el título original del caption del canal de almacenamiento
+        original_caption = session.current_video_data.get('original_caption', movie_data.get("title"))
+        
         # Preparar datos para guardar
         video_data = {
             "file_id": session.current_video_data['file_id'],
             "message_id": msg_id,
-            "title": movie_data.get("title"),
+            "title": original_caption,  # Usar caption original del canal
             "tmdb_id": movie_data.get("tmdb_id"),
             "original_title": movie_data.get("original_title"),
             "year": movie_data.get("year"),
@@ -194,7 +197,8 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # Publicar en canal de verificación (siempre publica nuevo)
         print(f"   Publicando con storage_msg_id: {msg_id}")
-        channel_msg = await publish_to_verification_channel(context, movie_data, msg_id)
+        # Pasar el título original del caption
+        channel_msg = await publish_to_verification_channel(context, movie_data, msg_id, original_caption)
         if channel_msg:
             video_data["channel_message_id"] = channel_msg.message_id
             print(f"   channel_message_id del post: {channel_msg.message_id}")
@@ -227,7 +231,8 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
         session.stats['indexed'] += 1
         
         await query.edit_message_text(
-            f"✅ <b>{movie_data['title']}</b> {action} exitosamente!\n\n"
+            f"✅ <b>{original_caption}</b> guardado exitosamente!\n\n"
+            f"🎬 Vinculado con TMDB: {movie_data['title']}\n"
             f"📊 Progreso: {session.stats['indexed']} indexados",
             parse_mode='HTML'
         )
@@ -437,9 +442,12 @@ async def stop_indexing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(stats_text, parse_mode='HTML')
 
-async def publish_to_verification_channel(context, movie_data, storage_msg_id):
+async def publish_to_verification_channel(context, movie_data, storage_msg_id, original_title=None):
     """
     Publica película en todos los canales configurados con poster y botón de deep link
+    
+    Args:
+        original_title: Título original del caption del canal de almacenamiento (opcional)
     
     Returns: Mensaje del primer canal (VERIFICATION_CHANNEL_ID) para guardar en BD
     """
@@ -459,8 +467,8 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id):
         response.raise_for_status()
         photo_bytes = response.content
         
-        # Crear caption
-        title = movie_data.get("title", "Sin título")
+        # Usar el título original del caption si está disponible, sino usar el de TMDB
+        title = original_title if original_title else movie_data.get("title", "Sin título")
         year = movie_data.get("year", "N/A")
         rating = movie_data.get("vote_average", 0)
         overview = movie_data.get("overview", "")
