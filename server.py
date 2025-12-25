@@ -420,7 +420,7 @@ def run_telegram_bot():
         from handlers.search import search_command, video_callback
         from handlers.admin import (
             indexar_command, stats_command, indexar_manual_command, 
-            reindexar_command, handle_reindex_callback
+            reindexar_command, handle_reindex_callback, reindexar_titulos_command
         )
         from handlers.repost import (
             repost_command, handle_repost_callback, handle_repost_channel_input
@@ -483,6 +483,7 @@ def run_telegram_bot():
         application.add_handler(CommandHandler("indexar", indexar_command))
         application.add_handler(CommandHandler("indexar_manual", indexar_manual_command))
         application.add_handler(CommandHandler("reindexar", reindexar_command))
+        application.add_handler(CommandHandler("reindexar_titulos", reindexar_titulos_command))
         application.add_handler(CommandHandler("repost", repost_command))
         application.add_handler(CommandHandler("indexar_serie", index_series_command))
         application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))
