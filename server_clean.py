@@ -177,14 +177,25 @@ def ad_completed():
             )
             print("🎥 Video enviado")
 
-            # Enviar mensaje de confirmación
+            # Enviar menú principal
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            keyboard = [
+                [
+                    InlineKeyboardButton("🎬 Películas", callback_data="menu_movies"),
+                    InlineKeyboardButton("📺 Series", callback_data="menu_series")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
             loop.run_until_complete(
                 bot.send_message(
                     chat_id=ad_token.user_id,
-                    text="✅ ¡Disfruta tu película!\n\nUsa /buscar para encontrar más contenido."
+                    text="🍿 <b>¿Qué quieres ver?</b>\n\nSelecciona una opción:",
+                    reply_markup=reply_markup,
+                    parse_mode='HTML'
                 )
             )
-            print("💬 Mensaje de confirmación enviado")
+            print("💬 Menú principal enviado")
 
             return jsonify({'success': True, 'message': 'Video enviado correctamente'})
 
