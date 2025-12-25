@@ -635,19 +635,23 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reindexar_titulos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Actualiza todos los títulos de videos con los captions originales del canal"""
-    user = update.effective_user
-    
-    if user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ No tienes permisos para usar este comando.")
-        return
-    
-    db = context.bot_data['db']
-    
-    msg = await update.message.reply_text(
-        "🔄 <b>Actualizando títulos...</b>\n\n"
-        "⏳ Obteniendo videos de la base de datos...",
-        parse_mode='HTML'
-    )
+    try:
+        user = update.effective_user
+        print(f"📝 /reindexar_titulos llamado por {user.id}")
+        
+        if user.id not in ADMIN_IDS:
+            await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+            return
+        
+        db = context.bot_data['db']
+        print(f"✅ DB obtenida")
+        
+        msg = await update.message.reply_text(
+            "🔄 <b>Actualizando títulos...</b>\n\n"
+            "⏳ Obteniendo videos de la base de datos...",
+            parse_mode='HTML'
+        )
+        print(f"✅ Mensaje inicial enviado")
     
     try:
         # Obtener todos los videos
@@ -736,8 +740,20 @@ async def reindexar_titulos_command(update: Update, context: ContextTypes.DEFAUL
             f"❌ Errores: {errors}",
             parse_mode='HTML'
         )
+        print(f"✅ Proceso completado: {updated} actualizados, {skipped} sin cambios, {errors} errores")
         
     except Exception as e:
-        await msg.edit_text(
-            f"❌ Error durante la actualización: {str(e)}"
-        )
+        print(f"❌ ERROR CRÍTICO en reindexar_titulos_command: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            await msg.edit_text(
+                f"❌ Error durante la actualización: {str(e)}"
+            )
+        except:
+            try:
+                await update.message.reply_text(
+                    f"❌ Error durante la actualización: {str(e)}"
+                )
+            except:
+                pass
