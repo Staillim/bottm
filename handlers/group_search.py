@@ -206,7 +206,7 @@ def calculate_confidence(original_text: str, query: str, movies: list, series: l
     
     if series:
         for show in series[:3]:
-            if query_lower in show.title.lower():
+            if query_lower in show.name.lower():
                 score += 0.2
                 break
     
@@ -245,9 +245,9 @@ async def send_group_results(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if series:
         text += "\n📺 *Series:*\n"
         for idx, show in enumerate(series[:MAX_AUTO_RESULTS], 1):
-            year = f"({show.first_air_date[:4]})" if show.first_air_date else ""
+            year = f"({show.year})" if show.year else ""
             
-            safe_title = show.title.replace("*", "").replace("_", "")
+            safe_title = show.name.replace("*", "").replace("_", "")
             text += f"  {idx}. {safe_title} {year}\n"
             
             keyboard.append([
