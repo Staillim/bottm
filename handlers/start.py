@@ -113,10 +113,105 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"❌ Error procesando series deep link: {e}")
                 import traceback
                 traceback.print_exc()
+        
+        # Deep link de búsqueda (desde grupos - "Buscar más en privado")
+        elif arg.startswith("search_"):
+            try:
+                # Extraer el query de búsqueda
+                search_query = arg[7:]  # Quitar "search_"
+                print(f"🔍 Procesando búsqueda desde grupo: '{search_query}'")
+                
+                # Ejecutar búsqueda completa
+                await send_full_search_results(update, context, search_query, user.id)
+                return
+            except Exception as e:
+                print(f"❌ Error procesando search deep link: {e}")
+                import traceback
+                traceback.print_exc()
     
     # Mostrar menú interactivo de películas/series
     from handlers.menu import main_menu
     await main_menu(update, context)
+
+async def send_full_search_results(update, context, query, user_id):
+    """Envía resultados completos de búsqueda en privado (desde grupos)"""
+    db = context.bot_data['db']
+    
+    print(f"🔍 Ejecutando búsqueda completa: '{query}'")
+    
+    # Buscar películas y series
+    movies = await db.search_videos(query, limit=10)
+    series = await db.search_tv_shows(query, limit=10)
+    
+    total_movies = len(movies) if movies else 0
+    total_series = len(series) if series else 0
+    
+    print(f"📊 Resultados: {total_movies} películas, {total_series} series")
+    
+    if total_movies == 0 and total_series == 0:
+        await update.message.reply_text(
+            f"😔 No se encontraron resultados para: *{query}*\n\n"
+            f"Intenta con otros términos de búsqueda.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Construir mensaje con todos los resultados
+    text = f"🔍 *Resultados para:* `{query}`\n\n"
+    keyboard = []
+    
+    # Agregar películas
+    if movies:
+        text += f"📽️ *Películas ({total_movies}):*\n"
+        for idx, movie in enumerate(movies, 1):
+            year = f"({movie.year})" if movie.year else ""
+            rating = f" ⭐{movie.vote_average/10:.1f}" if movie.vote_average else ""
+            
+            safe_title = movie.title.replace("*", "").replace("_", "").replace("`", "")
+            # Truncar título si es muy largo
+            display_title = safe_title[:50] + "..." if len(safe_title) > 50 else safe_title
+            text += f"  {idx}. {display_title} {year}{rating}\n"
+            
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📹 {display_title[:35]}",
+                    callback_data=f"movie_{movie.id}"
+                )
+            ])
+    
+    # Agregar series
+    if series:
+        text += f"\n📺 *Series ({total_series}):*\n"
+        for idx, show in enumerate(series, 1):
+            year = f"({show.year})" if show.year else ""
+            
+            safe_title = show.name.replace("*", "").replace("_", "").replace("`", "")
+            display_title = safe_title[:50] + "..." if len(safe_title) > 50 else safe_title
+            text += f"  {idx}. {display_title} {year}\n"
+            
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📺 {display_title[:35]}",
+                    callback_data=f"series_{show.id}"
+                )
+            ])
+    
+    # Agregar botón de menú principal
+    keyboard.append([InlineKeyboardButton("⬅️ Menú Principal", callback_data="menu_main")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+    
+    # Log de búsqueda
+    try:
+        await db.log_search(user_id, query, total_movies + total_series, metadata={'source': 'group_deeplink'})
+    except Exception as e:
+        print(f"⚠️ Error logging search: {e}")
 
 async def send_movie_by_id(update, context, movie_id, user_id):
     """Envía Mini App con película usando el ID de la BD (para búsqueda en grupos)"""
