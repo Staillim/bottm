@@ -122,6 +122,7 @@ def is_potential_search_query(text: str) -> bool:
     
     # Patrones que indican búsqueda de contenido
     search_indicators = [
+        r'^@\s*\w',  # "@película" o "@ película"
         r'alguien\s+(?:tiene|vio|conoce)',  # "alguien tiene/vio..."
         r'busco\s+',  # "busco..."
         r'tienen\s+',  # "tienen..."
@@ -157,6 +158,9 @@ def clean_search_query(text: str) -> str:
     """
     # Eliminar signos de interrogación, exclamación, etc
     text = re.sub(r'[¿?!¡]', '', text)
+    
+    # Eliminar @ al inicio (para búsquedas tipo @película)
+    text = re.sub(r'^@\s*', '', text)
     
     # Eliminar palabras de relleno comunes al inicio
     prefixes_to_remove = [
