@@ -34,19 +34,30 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if update.message.chat.type not in ['group', 'supergroup']:
         return
     
+    # Verificar que tiene texto
+    if not update.message.text:
+        return
+    
     message_text = update.message.text.strip()
+    
+    logger.info(f"📨 Mensaje de grupo recibido: '{message_text[:50]}...' de {update.effective_user.id}")
     
     # Ignorar si es un comando
     if message_text.startswith('/'):
+        logger.debug(f"⏭️ Ignorando comando: {message_text}")
         return
     
     # Ignorar mensajes muy cortos o muy largos
     if len(message_text) < MIN_QUERY_LENGTH or len(message_text) > 100:
+        logger.debug(f"⏭️ Mensaje ignorado por longitud: {len(message_text)} caracteres")
         return
     
     # Filtrar mensajes que son conversación casual
     if not is_potential_search_query(message_text):
+        logger.debug(f"⏭️ No parece búsqueda: '{message_text[:30]}...'")
         return
+    
+    logger.info(f"✅ Detectado como búsqueda potencial: '{message_text[:50]}...'")
     
     # Buscar en la base de datos
     db = context.bot_data['db']
@@ -54,7 +65,10 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     # Limpiar query para búsqueda
     clean_query = clean_search_query(message_text)
     
+    logger.info(f"🔍 Query limpio: '{clean_query}'")
+    
     if not clean_query:
+        logger.debug("⏭️ Query vacío después de limpiar")
         return
     
     # Buscar películas
@@ -66,15 +80,23 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     # Combinar resultados
     total_results = (len(movies) if movies else 0) + (len(series) if series else 0)
     
+    logger.info(f"📊 Resultados encontrados: {len(movies) if movies else 0} películas, {len(series) if series else 0} series")
+    
     if total_results == 0:
+        logger.info("⏭️ No hay resultados, no se responde")
         return  # No responder si no hay resultados
     
     # Calcular score de confianza
     confidence = calculate_confidence(message_text, clean_query, movies, series)
     
+    logger.info(f"📈 Confidence score: {confidence:.2f} (min requerido: {MIN_CONFIDENCE_SCORE})")
+    
     # Solo responder si el score es alto
     if confidence < MIN_CONFIDENCE_SCORE:
+        logger.info(f"⏭️ Score insuficiente ({confidence:.2f} < {MIN_CONFIDENCE_SCORE}), no se responde")
         return
+    
+    logger.info(f"✅ Enviando respuesta al grupo con {total_results} resultados")
     
     # Preparar respuesta
     await send_group_results(update, context, movies, series, clean_query)
@@ -268,6 +290,8 @@ async def group_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
     """
     Comando opcional para búsqueda manual en grupos: /search_group <query>
     """
+    logger.info(f"🔍 Comando /search_group ejecutado en chat {update.message.chat.id}")
+    
     if update.message.chat.type not in ['group', 'supergroup']:
         await update.message.reply_text(
             "Este comando solo funciona en grupos."
@@ -282,6 +306,7 @@ async def group_search_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     query = " ".join(context.args)
+    logger.info(f"🔍 Búsqueda manual en grupo: '{query}'")
     db = context.bot_data['db']
     
     # Buscar
