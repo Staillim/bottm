@@ -224,6 +224,8 @@ async def send_group_results(update: Update, context: ContextTypes.DEFAULT_TYPE,
     keyboard = []
     text = f"🎬 Encontré esto para: *{query}*\n\n"
     
+    bot_username = context.bot.username
+    
     # Agregar películas
     if movies:
         text += "📽️ *Películas:*\n"
@@ -234,10 +236,11 @@ async def send_group_results(update: Update, context: ContextTypes.DEFAULT_TYPE,
             safe_title = movie.title.replace("*", "").replace("_", "")
             text += f"  {idx}. {safe_title} {year}{rating}\n"
             
+            # URL que abre el bot en privado con el ID de la película
             keyboard.append([
                 InlineKeyboardButton(
                     f"📹 {safe_title[:40]}..." if len(safe_title) > 40 else f"📹 {safe_title}",
-                    callback_data=f"video_{movie.id}"
+                    url=f"https://t.me/{bot_username}?start=movie_{movie.id}"
                 )
             ])
     
@@ -250,10 +253,11 @@ async def send_group_results(update: Update, context: ContextTypes.DEFAULT_TYPE,
             safe_title = show.name.replace("*", "").replace("_", "")
             text += f"  {idx}. {safe_title} {year}\n"
             
+            # URL que abre el bot en privado con el ID de la serie
             keyboard.append([
                 InlineKeyboardButton(
                     f"📺 {safe_title[:40]}..." if len(safe_title) > 40 else f"📺 {safe_title}",
-                    callback_data=f"series_{show.id}"
+                    url=f"https://t.me/{bot_username}?start=series_{show.id}"
                 )
             ])
     
@@ -261,7 +265,7 @@ async def send_group_results(update: Update, context: ContextTypes.DEFAULT_TYPE,
     keyboard.append([
         InlineKeyboardButton(
             "🔍 Buscar más en privado",
-            url=f"https://t.me/{context.bot.username}?start=search_{query}"
+            url=f"https://t.me/{bot_username}?start=search_{query}"
         )
     ])
     

@@ -34,6 +34,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"Error procesando referido: {e}")
             # Continuar con el flujo normal después de procesar el referido
         
+        # Deep link de película por ID (desde búsqueda en grupos)
+        elif arg.startswith("movie_"):
+            movie_id = int(arg.split("_")[1])
+            print(f"🎬 Procesando película con ID: {movie_id}")
+            
+            # Enviar película directamente
+            await send_movie_by_id(update, context, movie_id, user.id)
+            return
+        
         elif arg.startswith("video_"):
             video_msg_id = int(arg.split("_")[1])
             print(f"🎬 Procesando video con message_id: {video_msg_id}")
@@ -96,6 +105,94 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Mostrar menú interactivo de películas/series
     from handlers.menu import main_menu
     await main_menu(update, context)
+
+async def send_movie_by_id(update, context, movie_id, user_id):
+    """Envía Mini App con película usando el ID de la BD (para búsqueda en grupos)"""
+    db = context.bot_data['db']
+    
+    try:
+        # Buscar video por ID
+        print(f"\n🔍 DEBUG send_movie_by_id:")
+        print(f"   Buscando video con ID: {movie_id}")
+        video = await db.get_video_by_id(movie_id)
+        print(f"   Resultado: {video.title if video else 'None'}")
+        
+        if not video:
+            if hasattr(update, 'message') and update.message:
+                await update.message.reply_text(
+                    "❌ Película no encontrada.\n\n"
+                    "Puede que haya sido eliminada o no esté disponible."
+                )
+            return
+    except Exception as e:
+        print(f"Error buscando película: {e}")
+        if hasattr(update, 'message') and update.message:
+            await update.message.reply_text(
+                "❌ Error al buscar la película. Por favor intenta más tarde."
+            )
+        return
+
+    # Verificar si el usuario tiene tickets disponibles
+    user_tickets = await db.get_user_tickets(user_id)
+    has_tickets = user_tickets and user_tickets.tickets > 0
+    tickets_count = user_tickets.tickets if user_tickets else 0
+
+    # Preparar Mini App
+    from config.settings import WEBAPP_URL, API_SERVER_URL
+    from telegram import WebAppInfo
+    import urllib.parse
+
+    # Preparar parámetros para la Mini App
+    title_encoded = urllib.parse.quote(video.title)
+    poster_encoded = urllib.parse.quote(video.poster_url or "https://via.placeholder.com/300x450?text=Sin+Poster")
+    api_url_encoded = urllib.parse.quote(API_SERVER_URL)
+
+    webapp_url = f"{WEBAPP_URL}?user_id={user_id}&video_id={video.id}&title={title_encoded}&poster={poster_encoded}&api_url={api_url_encoded}&content_type=movie"
+
+    print(f"📱 Abriendo Mini App desde búsqueda en grupo:")
+    print(f"   User: {user_id}")
+    print(f"   Video DB ID: {video.id}")
+    print(f"   Tickets disponibles: {tickets_count}")
+
+    # Crear botones
+    keyboard = []
+    
+    keyboard.append([
+        InlineKeyboardButton(
+            "🎬 Ver Película",
+            web_app=WebAppInfo(url=webapp_url)
+        )
+    ])
+    
+    # Opción de usar ticket si tiene
+    if has_tickets:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🎟️ Usar Ticket ({tickets_count} disponibles)",
+                callback_data=f"use_ticket_movie_{video.id}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("⬅️ Menú Principal", callback_data="menu_main")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Mensaje informativo
+    if has_tickets:
+        message_text = (
+            f"🎬 <b>{video.title}</b>\n\n"
+            f"🎟️ Tienes <b>{tickets_count} tickets</b> disponibles.\n"
+            f"Puedes usar 1 ticket para ver sin anuncios.\n\n"
+            f"👇 Selecciona una opción:"
+        )
+    else:
+        message_text = f"🎬 <b>{video.title}</b>\n\n👇 Presiona el botón para ver la película:"
+
+    if hasattr(update, 'message') and update.message:
+        await update.message.reply_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
 
 async def send_video_by_message_id(update, context, video_msg_id, user_id):
     """Envía Mini App con anuncio o directo si tiene tickets"""
