@@ -36,71 +36,83 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Deep link de película por ID (desde búsqueda en grupos)
         elif arg.startswith("movie_"):
-            movie_id = int(arg.split("_")[1])
-            print(f"🎬 Procesando película con ID: {movie_id}")
-            
-            # Enviar película directamente
-            await send_movie_by_id(update, context, movie_id, user.id)
-            return
+            try:
+                movie_id = int(arg.split("_")[1])
+                print(f"🎬 Procesando película con ID: {movie_id}")
+                
+                # Enviar película directamente
+                await send_movie_by_id(update, context, movie_id, user.id)
+                return
+            except Exception as e:
+                print(f"❌ Error procesando movie deep link: {e}")
+                import traceback
+                traceback.print_exc()
         
         elif arg.startswith("video_"):
-            video_msg_id = int(arg.split("_")[1])
-            print(f"🎬 Procesando video con message_id: {video_msg_id}")
-            
-            # Enviar video directamente
-            await send_video_by_message_id(update, context, video_msg_id, user.id)
-            return
-    
-    # Verificar si viene desde un deep link de serie (botón "Ver Ahora" de serie)
-    if context.args and len(context.args) > 0:
-        arg = context.args[0]
-        
-        if arg.startswith("series_"):
-            series_id = int(arg.split("_")[1])
-            print(f"📺 Procesando serie con ID: {series_id}")
-            
-            # Obtener serie y temporadas
-            show = await db.get_tv_show_by_id(series_id)
-            if not show:
-                await update.message.reply_text("❌ Serie no encontrada.")
+            try:
+                video_msg_id = int(arg.split("_")[1])
+                print(f"🎬 Procesando video con message_id: {video_msg_id}")
+                
+                # Enviar video directamente
+                await send_video_by_message_id(update, context, video_msg_id, user.id)
                 return
-            
-            seasons = await db.get_seasons_for_show(series_id)
-            if not seasons:
+            except Exception as e:
+                print(f"❌ Error procesando video deep link: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Deep link de serie por ID (desde búsqueda en grupos)
+        elif arg.startswith("series_"):
+            try:
+                series_id = int(arg.split("_")[1])
+                print(f"📺 Procesando serie con ID: {series_id}")
+                
+                # Obtener serie y temporadas
+                show = await db.get_tv_show_by_id(series_id)
+                if not show:
+                    await update.message.reply_text("❌ Serie no encontrada.")
+                    return
+                
+                seasons = await db.get_seasons_for_show(series_id)
+                if not seasons:
+                    await update.message.reply_text(
+                        f"❌ No hay episodios disponibles para <b>{show.name}</b>",
+                        parse_mode='HTML'
+                    )
+                    return
+                
+                # Guardar estado del usuario
+                await db.set_user_state(user.id, "series_seasons", series_id)
+                
+                # Construir botones de temporadas
+                keyboard = []
+                for season_number, episode_count in seasons:
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            f"Temporada {season_number} ({episode_count} episodios)",
+                            callback_data=f"season_{series_id}_{season_number}"
+                        )
+                    ])
+                
+                keyboard.append([InlineKeyboardButton("⬅️ Volver al menú", callback_data="menu_main")])
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                message_text = f"📺 <b>{show.name}</b>"
+                if show.year:
+                    message_text += f" ({show.year})"
+                message_text += f"\n\n🎬 <b>Temporadas disponibles:</b>"
+                
+                print(f"✅ Enviando menú de temporadas para {show.name}")
                 await update.message.reply_text(
-                    f"❌ No hay episodios disponibles para <b>{show.name}</b>",
+                    text=message_text,
+                    reply_markup=reply_markup,
                     parse_mode='HTML'
                 )
                 return
-            
-            # Guardar estado del usuario
-            await db.set_user_state(user.id, "series_seasons", series_id)
-            
-            # Construir botones de temporadas
-            keyboard = []
-            for season_number, episode_count in seasons:
-                keyboard.append([
-                    InlineKeyboardButton(
-                        f"Temporada {season_number} ({episode_count} episodios)",
-                        callback_data=f"season_{series_id}_{season_number}"
-                    )
-                ])
-            
-            keyboard.append([InlineKeyboardButton("⬅️ Volver a series", callback_data="menu_series")])
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            message_text = f"📺 <b>{show.name}</b>"
-            if show.year:
-                message_text += f" ({show.year})"
-            message_text += f"\n\n🎬 <b>Temporadas disponibles:</b>"
-            
-            print(f"✅ Enviando menú de temporadas para {show.name}")
-            await update.message.reply_text(
-                text=message_text,
-                reply_markup=reply_markup,
-                parse_mode='HTML'
-            )
-            return
+            except Exception as e:
+                print(f"❌ Error procesando series deep link: {e}")
+                import traceback
+                traceback.print_exc()
     
     # Mostrar menú interactivo de películas/series
     from handlers.menu import main_menu
