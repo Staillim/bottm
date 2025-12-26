@@ -122,7 +122,7 @@ def is_potential_search_query(text: str) -> bool:
     
     # Patrones que indican búsqueda de contenido
     search_indicators = [
-        r'^@\s*\w',  # "@película" o "@ película"
+        r'^@',  # Mensaje que empieza con @ (búsqueda directa)
         r'alguien\s+(?:tiene|vio|conoce)',  # "alguien tiene/vio..."
         r'busco\s+',  # "busco..."
         r'tienen\s+',  # "tienen..."
