@@ -235,7 +235,7 @@ class DatabaseManager:
             )
             return result.scalars().all()
     
-    async def log_search(self, user_id, query, results_count):
+    async def log_search(self, user_id, query, results_count, metadata=None):
         async with self.async_session() as session:
             search = Search(user_id=user_id, query=query, results_count=results_count)
             session.add(search)

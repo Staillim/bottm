@@ -32,6 +32,7 @@ from handlers.tickets import (
 from handlers.admin_users import (
     admin_users_command, handle_admin_user_callback, handle_admin_user_input
 )
+from handlers.group_search import handle_group_message, group_search_command
 
 # Configurar logging
 logging.basicConfig(
@@ -117,6 +118,9 @@ def main():
     application.add_handler(CommandHandler("misreferidos", mis_referidos_command))
     application.add_handler(CommandHandler("usuarios", admin_users_command))
     
+    # Comando de búsqueda en grupos
+    application.add_handler(CommandHandler("search_group", group_search_command))
+    
     # Handlers de callbacks (nuevo sistema unificado tiene prioridad)
     application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))
     application.add_handler(CallbackQueryHandler(handle_broadcast_callback, pattern="^broadcast_"))
@@ -131,6 +135,11 @@ def main():
     
     # Handler de mensajes de texto (búsqueda contextual)
     async def text_handler_with_auto_index(update, context):
+        # Primero verificar si es mensaje de grupo para búsqueda inteligente
+        if update.message and update.message.chat.type in ['group', 'supergroup']:
+            await handle_group_message(update, context)
+            return
+        
         # Intentar manejar input de canal para repost
         await handle_repost_channel_input(update, context)
         
