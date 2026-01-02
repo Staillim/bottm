@@ -21,7 +21,9 @@ async def auto_index_episodes(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         # Obtener el último mensaje indexado desde la base de datos
         last_indexed_str = await db.get_config('last_indexed_message', '0')
-        start_message_id = int(last_indexed_str) + 1  # Comenzar desde el siguiente
+        last_indexed = int(last_indexed_str)
+        # Si es 0 (primera vez), empezar desde 1. Si ya hay mensajes indexados, continuar desde el siguiente
+        start_message_id = 1 if last_indexed == 0 else last_indexed + 1
         
         # Determinar si es un callback o comando
         if update.callback_query:
@@ -77,7 +79,7 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
     empty_count = 0
     MAX_EMPTY = 5
     current_message_id = start_message_id
-    last_indexed_message_id = start_message_id - 1
+    last_indexed_message_id = 0  # Se actualizará con cada episodio indexado
     
     try:
         while empty_count < MAX_EMPTY:
@@ -169,8 +171,13 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
             
             current_message_id += 1
         
-        # Guardar el último mensaje procesado
-        await db.set_config('last_indexed_message', str(last_indexed_message_id))
+        # Guardar el último mensaje procesado (si se indexó algo, guardar el último indexado;
+        # si no, guardar el último mensaje revisado menos 1 para no saltar mensajes)
+        if indexed_count > 0:
+            await db.set_config('last_indexed_message', str(last_indexed_message_id))
+        else:
+            # Si no se indexó nada, guardar el último mensaje revisado
+            await db.set_config('last_indexed_message', str(current_message_id - 1))
         
         if indexed_count > 0:
             # Enviar resumen
