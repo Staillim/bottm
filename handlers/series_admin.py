@@ -62,8 +62,17 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                                     show_id: int, show_name: str, start_message_id: int, chat_id: int):
     """
     Escanea el canal buscando episodios de la serie
+    Soporta múltiples formatos:
+    - 1x1, 2x14 (formato corto)
+    - Temporada 2 - Capítulo 14 (formato español)
+    - Temporada 1 - Capítulo 20 (formato español)
     """
-    pattern = re.compile(r'(\d+)[xX](\d+)')
+    # Patrones para detectar episodios
+    # Formato: 1x1, 2x14, etc.
+    pattern_short = re.compile(r'(\d+)[xX](\d+)')
+    # Formato: Temporada 2 - Capítulo 14, Temporada 1 - Capítulo 20
+    pattern_spanish = re.compile(r'[Tt]emporada\s*(\d+)\s*[-–—]\s*[Cc]ap[ií]tulo\s*(\d+)', re.IGNORECASE)
+    
     indexed_count = 0
     empty_count = 0
     MAX_EMPTY = 5
@@ -98,8 +107,32 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                     current_message_id += 1
                     continue
                 
-                # Buscar patrón #x# en el caption
-                match = pattern.search(caption)
+                # Intentar encontrar el episodio con cualquiera de los patrones
+                match = None
+                episode_title = None
+                season_num = None
+                episode_num = None
+                
+                # Primero intentar formato español "Temporada X - Capítulo Y"
+                match_spanish = pattern_spanish.search(caption)
+                if match_spanish:
+                    match = match_spanish
+                    season_num = int(match.group(1))
+                    episode_num = int(match.group(2))
+                    # Extraer título después del patrón
+                    title_match = re.search(r'[Cc]ap[ií]tulo\s*\d+\s*[-–—]?\s*(.+)', caption)
+                    episode_title = title_match.group(1).strip() if title_match else f"Episodio {episode_num}"
+                
+                # Si no se encontró, intentar formato corto "#x#"
+                if not match:
+                    match_short = pattern_short.search(caption)
+                    if match_short:
+                        match = match_short
+                        season_num = int(match.group(1))
+                        episode_num = int(match.group(2))
+                        # Extraer título después del patrón
+                        title_match = re.search(r'\d+[xX]\d+\s*[-–—]?\s*(.+)', caption)
+                        episode_title = title_match.group(1).strip() if title_match else f"Episodio {episode_num}"
                 
                 if not match:
                     empty_count += 1
@@ -108,14 +141,6 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                 
                 # Resetear contador de vacíos
                 empty_count = 0
-                
-                # Extraer temporada y episodio
-                season_num = int(match.group(1))
-                episode_num = int(match.group(2))
-                
-                # Extraer título del episodio (texto después del patrón)
-                title_match = re.search(r'\d+[xX]\d+\s*[-–—]?\s*(.+)', caption)
-                episode_title = title_match.group(1).strip() if title_match else f"Episodio {episode_num}"
                 
                 # Guardar en la base de datos
                 await db.add_episode(
@@ -203,7 +228,9 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                      f"Verifica que:\n"
                      f"• Los mensajes tengan video\n"
                      f"• El caption contenga '{show_name}'\n"
-                     f"• El caption tenga el formato #x# (ej: 1x1, 2x5)",
+                     f"• El caption tenga uno de estos formatos:\n"
+                     f"  - <code>1x1</code>, <code>2x14</code> (formato corto)\n"
+                     f"  - <code>Temporada 1 - Capítulo 20</code> (formato español)",
                 parse_mode='HTML'
             )
             
@@ -221,8 +248,12 @@ async def index_series_command(update: Update, context: ContextTypes.DEFAULT_TYP
     Uso: /indexar_serie <nombre de la serie>
     Ejemplo: /indexar_serie Loki (2021)
     
-    Después de indexar la serie, el admin debe responder a los mensajes del canal
-    con el formato: S#x# (ej: S1x1, S2x5)
+    El sistema detecta automáticamente episodios en estos formatos:
+    - 1x1, 2x14 (formato corto)
+    - Temporada 1 - Capítulo 20 (formato español)
+    
+    Si no encuentra episodios automáticamente, puedes indexar manualmente
+    respondiendo a los mensajes del canal con cualquiera de estos formatos.
     """
     user_id = update.effective_user.id
     
@@ -320,17 +351,23 @@ async def index_series_command(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['indexing_show_name'] = show.name
         
         await update.message.reply_text(
-            f"⚠️ No se encontraron episodios con formato S#x# en el canal.\n\n"
-            f"Puedes indexar manualmente respondiendo mensajes con:\n"
-            f"<code>S1x1</code> (Temporada 1, Episodio 1)\n"
-            f"<code>S2x5</code> (Temporada 2, Episodio 5)",
+            f"⚠️ No se encontraron episodios automáticamente en el canal.\n\n"
+            f"Puedes indexar manualmente respondiendo mensajes con cualquiera de estos formatos:\n\n"
+            f"<b>Formato corto:</b>\n"
+            f"<code>1x1</code> (Temporada 1, Episodio 1)\n"
+            f"<code>2x5</code> (Temporada 2, Episodio 5)\n\n"
+            f"<b>Formato español:</b>\n"
+            f"<code>Temporada 1 - Capítulo 20</code>\n"
+            f"<code>Temporada 2 - Capítulo 14</code>",
             parse_mode='HTML'
         )
 
 async def index_episode_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Maneja respuestas a mensajes del canal para indexar episodios
-    Formato: #x# (ej: 1x1, 2x10)
+    Soporta múltiples formatos:
+    - 1x1, 2x10 (formato corto)
+    - Temporada 2 - Capítulo 14 (formato español)
     """
     user_id = update.effective_user.id
     
@@ -351,16 +388,29 @@ async def index_episode_reply(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
     
-    # Parsear formato #x# (puede estar en cualquier parte del texto)
+    # Parsear formatos
     text = update.message.text.strip()
-    pattern = r'(\d+)[xX](\d+)'
-    match = re.search(pattern, text)
     
-    if not match:
+    # Formato corto: 1x1, 2x10
+    pattern_short = r'(\d+)[xX](\d+)'
+    # Formato español: Temporada 2 - Capítulo 14
+    pattern_spanish = r'[Tt]emporada\s*(\d+)\s*[-–—]\s*[Cc]ap[ií]tulo\s*(\d+)'
+    
+    match_short = re.search(pattern_short, text)
+    match_spanish = re.search(pattern_spanish, text, re.IGNORECASE)
+    
+    season_number = None
+    episode_number = None
+    
+    # Priorizar formato español si está presente
+    if match_spanish:
+        season_number = int(match_spanish.group(1))
+        episode_number = int(match_spanish.group(2))
+    elif match_short:
+        season_number = int(match_short.group(1))
+        episode_number = int(match_short.group(2))
+    else:
         return  # No es un formato válido, ignorar
-    
-    season_number = int(match.group(1))
-    episode_number = int(match.group(2))
     
     show_id = context.user_data['indexing_show_id']
     show_name = context.user_data['indexing_show_name']
