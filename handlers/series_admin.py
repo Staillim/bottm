@@ -66,6 +66,8 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
     Escanea el canal buscando episodios de la serie
     Soporta múltiples formatos:
     - 1x1, 2x14 (formato corto)
+    - 🔻Lucifer — 02x01 — Audio Latino (formato con emoji y guión largo)
+    - Breaking Bad - S01E01 - 1080p.mp4 (formato S##E##)
     - Temporada 2 - Capítulo 14 (formato español)
     - Temporada 1 - Capítulo 20 (formato español)
     """
@@ -74,6 +76,10 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
     pattern_short = re.compile(r'(\d+)[xX](\d+)')
     # Formato: Temporada 2 - Capítulo 14, Temporada 1 - Capítulo 20
     pattern_spanish = re.compile(r'[Tt]emporada\s*(\d+)\s*[-–—]\s*[Cc]ap[ií]tulo\s*(\d+)', re.IGNORECASE)
+    # Formato: 🔻Lucifer — 02x01 — Audio Latino (con emoji y guión largo)
+    pattern_emoji_dash = re.compile(r'(\d+)[xX](\d+)\s*[—–-]')
+    # Formato: Breaking Bad - S01E01 - 1080p.mp4
+    pattern_se_format = re.compile(r'[Ss](\d+)[Ee](\d+)')
     
     indexed_count = 0
     empty_count = 0
@@ -125,7 +131,18 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                     title_match = re.search(r'[Cc]ap[ií]tulo\s*\d+\s*[-–—]?\s*(.+)', caption)
                     episode_title = title_match.group(1).strip() if title_match else f"Episodio {episode_num}"
                 
-                # Si no se encontró, intentar formato corto "#x#"
+                # Si no se encontró, intentar formato S##E## (ej: S01E01)
+                if not match:
+                    match_se = pattern_se_format.search(caption)
+                    if match_se:
+                        match = match_se
+                        season_num = int(match.group(1))
+                        episode_num = int(match.group(2))
+                        # Extraer título después del patrón
+                        title_match = re.search(r'[Ss]\d+[Ee]\d+\s*[-–—]?\s*(.+)', caption)
+                        episode_title = title_match.group(1).strip() if title_match else f"Episodio {episode_num}"
+                
+                # Si no se encontró, intentar formato corto "#x#" (incluyendo emoji-dash)
                 if not match:
                     match_short = pattern_short.search(caption)
                     if match_short:
@@ -237,7 +254,9 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                      f"• El caption contenga '{show_name}'\n"
                      f"• El caption tenga uno de estos formatos:\n"
                      f"  - <code>1x1</code>, <code>2x14</code> (formato corto)\n"
-                     f"  - <code>Temporada 1 - Capítulo 20</code> (formato español)",
+                     f"  - <code>Temporada 1 - Capítulo 20</code> (formato español)\n"
+                     f"  - <code>🔻Lucifer — 02x01 — Audio Latino</code> (formato con emoji)\n"
+                     f"  - <code>Breaking Bad - S01E01 - 1080p.mp4</code> (formato S##E##)",
                 parse_mode='HTML'
             )
             
@@ -253,10 +272,12 @@ async def index_series_command(update: Update, context: ContextTypes.DEFAULT_TYP
     Comando /indexar_serie - Indexa una nueva serie con sus episodios
     
     Uso: /indexar_serie <nombre de la serie>
-    Ejemplo: /indexar_serie Loki (2021)
+    Ejemplo: /indexar_serie Breaking Bad
     
     El sistema detecta automáticamente episodios en estos formatos:
     - 1x1, 2x14 (formato corto)
+    - 🔻Lucifer — 02x01 — Audio Latino (formato con emoji)
+    - Breaking Bad - S01E01 - 1080p.mp4 (formato S##E##)
     - Temporada 1 - Capítulo 20 (formato español)
     
     Si no encuentra episodios automáticamente, puedes indexar manualmente
@@ -365,7 +386,11 @@ async def index_series_command(update: Update, context: ContextTypes.DEFAULT_TYP
             f"<code>2x5</code> (Temporada 2, Episodio 5)\n\n"
             f"<b>Formato español:</b>\n"
             f"<code>Temporada 1 - Capítulo 20</code>\n"
-            f"<code>Temporada 2 - Capítulo 14</code>",
+            f"<code>Temporada 2 - Capítulo 14</code>\n\n"
+            f"<b>Formato con emoji:</b>\n"
+            f"<code>🔻Lucifer — 02x01 — Audio Latino</code>\n\n"
+            f"<b>Formato S##E##:</b>\n"
+            f"<code>Breaking Bad - S01E01 - 1080p.mp4</code>",
             parse_mode='HTML'
         )
 
@@ -374,6 +399,8 @@ async def index_episode_reply(update: Update, context: ContextTypes.DEFAULT_TYPE
     Maneja respuestas a mensajes del canal para indexar episodios
     Soporta múltiples formatos:
     - 1x1, 2x10 (formato corto)
+    - 🔻Lucifer — 02x01 — Audio Latino (formato con emoji y guión largo)
+    - Breaking Bad - S01E01 - 1080p.mp4 (formato S##E##)
     - Temporada 2 - Capítulo 14 (formato español)
     """
     user_id = update.effective_user.id
@@ -402,9 +429,12 @@ async def index_episode_reply(update: Update, context: ContextTypes.DEFAULT_TYPE
     pattern_short = r'(\d+)[xX](\d+)'
     # Formato español: Temporada 2 - Capítulo 14
     pattern_spanish = r'[Tt]emporada\s*(\d+)\s*[-–—]\s*[Cc]ap[ií]tulo\s*(\d+)'
+    # Formato S##E##: S01E01, S02E05
+    pattern_se_format = r'[Ss](\d+)[Ee](\d+)'
     
     match_short = re.search(pattern_short, text)
     match_spanish = re.search(pattern_spanish, text, re.IGNORECASE)
+    match_se = re.search(pattern_se_format, text)
     
     season_number = None
     episode_number = None
@@ -413,6 +443,9 @@ async def index_episode_reply(update: Update, context: ContextTypes.DEFAULT_TYPE
     if match_spanish:
         season_number = int(match_spanish.group(1))
         episode_number = int(match_spanish.group(2))
+    elif match_se:
+        season_number = int(match_se.group(1))
+        episode_number = int(match_se.group(2))
     elif match_short:
         season_number = int(match_short.group(1))
         episode_number = int(match_short.group(2))
