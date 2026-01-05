@@ -106,16 +106,12 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                     current_message_id += 1
                     continue
                 
-                # Verificar si el caption contiene el nombre de la serie
+                # Obtener caption del mensaje
                 caption = message.caption or ""
                 
-                # Buscar el nombre de la serie en el caption (case insensitive)
-                if show_name.lower() not in caption.lower():
-                    empty_count += 1
-                    current_message_id += 1
-                    continue
-                
                 # Intentar encontrar el episodio con cualquiera de los patrones
+                # NOTA: Ya no verificamos si el caption contiene el nombre de la serie
+                # Esto permite indexar episodios con formato solo "1x1", "1x2", etc.
                 match = None
                 episode_title = None
                 season_num = None
