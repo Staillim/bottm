@@ -20,8 +20,10 @@ class BroadcastSession:
         self.admin_id = admin_id
         self.message_type = None  # 'welcome', 'thanks', 'custom'
         self.custom_message = None
+        self.custom_video = None  # Para almacenar video
         self.custom_buttons = []
         self.awaiting_custom = False
+        self.awaiting_video = False  # Estado para recibir video
         self.awaiting_button_text = False
         self.awaiting_button_url = False
         self.current_button_text = None
@@ -41,6 +43,7 @@ async def broadcast_menu_command(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("👋 Mensaje de Bienvenida", callback_data="broadcast_welcome")],
         [InlineKeyboardButton("🙏 Mensaje de Agradecimiento", callback_data="broadcast_thanks")],
         [InlineKeyboardButton("✍️ Mensaje Personalizado", callback_data="broadcast_custom")],
+        [InlineKeyboardButton("🎥 Mensaje con Video", callback_data="broadcast_video")],
         [InlineKeyboardButton("🗑️ Eliminar Mensajes", callback_data="broadcast_delete")],
         [InlineKeyboardButton("📊 Ver Estadísticas", callback_data="broadcast_stats")]
     ]
@@ -67,6 +70,8 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
         await send_thanks_broadcast(update, context)
     elif data == "broadcast_custom":
         await request_custom_message(update, context)
+    elif data == "broadcast_video":
+        await request_custom_video_message(update, context)
     elif data == "broadcast_delete":
         await request_delete_broadcast(update, context)
     elif data == "broadcast_delete_confirm":
@@ -87,6 +92,7 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
             [InlineKeyboardButton("👋 Mensaje de Bienvenida", callback_data="broadcast_welcome")],
             [InlineKeyboardButton("🙏 Mensaje de Agradecimiento", callback_data="broadcast_thanks")],
             [InlineKeyboardButton("✍️ Mensaje Personalizado", callback_data="broadcast_custom")],
+            [InlineKeyboardButton("🎥 Mensaje con Video", callback_data="broadcast_video")],
             [InlineKeyboardButton("🗑️ Eliminar Mensajes", callback_data="broadcast_delete")],
             [InlineKeyboardButton("📊 Ver Estadísticas", callback_data="broadcast_stats")]
         ]
@@ -188,6 +194,29 @@ async def request_custom_message(update: Update, context: ContextTypes.DEFAULT_T
         parse_mode='HTML'
     )
 
+async def request_custom_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Solicita mensaje personalizado con video al admin"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    # Crear sesión
+    session = BroadcastSession(user_id)
+    session.message_type = 'custom_video'
+    session.awaiting_video = True
+    broadcast_sessions[user_id] = session
+    
+    await query.edit_message_text(
+        "🎥 <b>Mensaje con Video - Paso 1/3</b>\n\n"
+        "Primero, envía el video que deseas compartir.\n\n"
+        "Puedes enviar:\n"
+        "• Video desde tu galería\n"
+        "• Video grabado en el momento\n"
+        "• Video desde una URL (forward)\n\n"
+        "Después podrás agregar texto y botones.\n\n"
+        "Envía /cancelar para cancelar.",
+        parse_mode='HTML'
+    )
+
 async def handle_custom_message_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja el input del mensaje personalizado y botones"""
     user_id = update.effective_user.id
@@ -197,17 +226,46 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
     if not session:
         return False
     
-    message_text = update.message.text
-    
     # Verificar cancelación
-    if message_text == "/cancelar":
+    if update.message.text == "/cancelar":
         del broadcast_sessions[user_id]
         await update.message.reply_text("❌ Broadcast cancelado.")
         return True
     
-    # Estado 1: Esperando mensaje de texto
+    # Estado 1: Esperando video
+    if session.awaiting_video:
+        if update.message.video:
+            session.custom_video = update.message.video.file_id
+            session.awaiting_video = False
+            session.awaiting_custom = True
+            
+            await update.message.reply_text(
+                "🎥 <b>Video guardado!</b>\n\n"
+                "📝 <b>Mensaje con Video - Paso 2/3</b>\n\n"
+                "Ahora escribe el mensaje que acompañará al video.\n\n"
+                "Puedes usar HTML para formato:\n"
+                "• <code>&lt;b&gt;texto&lt;/b&gt;</code> para <b>negrita</b>\n"
+                "• <code>&lt;i&gt;texto&lt;/i&gt;</code> para <i>cursiva</i>\n\n"
+                "O envía /skip para enviar solo el video.",
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                "❌ Por favor, envía un video.\n\n"
+                "Envía /cancelar para cancelar el broadcast."
+            )
+        return True
+    
+    # Estado 2: Esperando mensaje de texto
     if session.awaiting_custom:
-        session.custom_message = message_text
+        message_text = update.message.text
+        
+        # Permitir skip si hay video
+        if message_text == "/skip" and session.custom_video:
+            session.custom_message = ""
+        else:
+            session.custom_message = message_text
+            
         session.awaiting_custom = False
         
         # Preguntar si quiere agregar botones
@@ -218,8 +276,12 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
+        preview_text = f"📝 <b>Mensaje guardado:</b>\n\n{message_text}\n\n"
+        if session.custom_video:
+            preview_text = f"🎥 <b>Video + Mensaje guardados!</b>\n\n📝 <b>Texto:</b>\n{message_text}\n\n"
+        
         await update.message.reply_text(
-            f"📝 <b>Mensaje guardado:</b>\n\n{message_text}\n\n"
+            f"{preview_text}"
             "¿Deseas agregar botones al mensaje?",
             reply_markup=reply_markup,
             parse_mode='HTML'
@@ -400,7 +462,7 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🌟 ¡Hasta la próxima! 🌟"
             )
             reply_markup = None
-        else:  # custom
+        else:  # custom o custom_video
             message_text = session.custom_message
             # Crear botones personalizados si existen
             if session.custom_buttons:
@@ -423,12 +485,23 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for index, user in enumerate(users, 1):
             try:
-                await context.bot.send_message(
-                    chat_id=user.user_id,
-                    text=message_text,
-                    parse_mode='HTML',
-                    reply_markup=reply_markup
-                )
+                # Si hay video, enviar video con caption
+                if session.custom_video:
+                    await context.bot.send_video(
+                        chat_id=user.user_id,
+                        video=session.custom_video,
+                        caption=message_text if message_text else None,
+                        parse_mode='HTML',
+                        reply_markup=reply_markup
+                    )
+                else:
+                    # Enviar mensaje de texto normal
+                    await context.bot.send_message(
+                        chat_id=user.user_id,
+                        text=message_text,
+                        parse_mode='HTML',
+                        reply_markup=reply_markup
+                    )
                 sent_count += 1
                 
             except Exception as e:

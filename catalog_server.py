@@ -19,7 +19,7 @@ def get_db_connection():
 
 @app.route('/catalog')
 def catalog():
-    return send_file('webapp/catalog_supabase.html')
+    return send_file('webapp/catalog_local.html')
 
 @app.route('/api/movies')
 def get_movies():
