@@ -1,8 +1,12 @@
 # Netlify configuration
 [build]
   publish = "webapp"
-  command = "echo 'No build needed'"
+  command = "cd netlify/functions && npm install"
   functions = "netlify/functions"
+
+# Plugin para instalar dependencias de functions
+[[plugins]]
+  package = "@netlify/plugin-functions-install-core"
 
 # Página principal - Redirige al catálogo
 [[redirects]]
