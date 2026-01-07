@@ -38,6 +38,11 @@ def home():
     """Página de inicio"""
     return jsonify({'status': 'ok', 'service': 'CineStelar API Server'})
 
+@app.route('/catalog')
+def serve_catalog():
+    """Sirve el catálogo de películas y series"""
+    return send_file('webapp/catalog_supabase.html')
+
 @app.route('/ad_viewer.html')
 def serve_webapp():
     """Sirve la Mini App de anuncios"""
@@ -217,6 +222,90 @@ def ad_completed():
 def test():
     """Endpoint de prueba"""
     return jsonify({'status': 'ok', 'message': 'Test endpoint working v2', 'db_initialized': db is not None, 'bot_initialized': bot is not None})
+
+@app.route('/api/movies')
+def get_movies():
+    """Obtiene todas las películas"""
+    global db
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        if db is None:
+            db = DatabaseManager()
+            loop.run_until_complete(db.init_db())
+        
+        movies = loop.run_until_complete(db.get_all_videos())
+        movies_list = []
+        
+        for movie in movies:
+            try:
+                movies_list.append({
+                    'id': movie.id,
+                    'title': movie.title or 'Sin título',
+                    'original_title': movie.original_title,
+                    'year': movie.year,
+                    'overview': movie.overview or '',
+                    'poster_url': movie.poster_url or '',
+                    'backdrop_url': getattr(movie, 'backdrop_url', '') or '',
+                    'vote_average': float(movie.vote_average) if movie.vote_average else None,
+                    'runtime': movie.runtime,
+                    'genres': movie.genres,
+                    'type': 'movie'
+                })
+            except Exception as e:
+                print(f"Error procesando película: {e}")
+                continue
+        
+        return jsonify({'movies': movies_list, 'total': len(movies_list)})
+    except Exception as e:
+        print(f"Error getting movies: {e}")
+        return jsonify({'error': str(e), 'movies': []}), 500
+    finally:
+        loop.close()
+
+@app.route('/api/series')
+def get_series():
+    """Obtiene todas las series"""
+    global db
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        if db is None:
+            db = DatabaseManager()
+            loop.run_until_complete(db.init_db())
+        
+        # Usar search_tv_shows con query vacío para obtener todas
+        series_list = loop.run_until_complete(db.search_tv_shows("", limit=1000))
+        series_data = []
+        
+        for show in series_list:
+            try:
+                series_data.append({
+                    'id': show.id,
+                    'name': show.name or 'Sin título',
+                    'original_name': show.original_name,
+                    'year': show.year,
+                    'overview': show.overview or '',
+                    'poster_url': show.poster_url or '',
+                    'backdrop_url': show.backdrop_url or '',
+                    'vote_average': float(show.vote_average) if show.vote_average else None,
+                    'genres': show.genres,
+                    'number_of_seasons': show.number_of_seasons,
+                    'status': show.status,
+                    'type': 'series'
+                })
+            except Exception as e:
+                print(f"Error procesando serie: {e}")
+                continue
+        
+        return jsonify({'series': series_data, 'total': len(series_data)})
+    except Exception as e:
+        print(f"Error getting series: {e}")
+        return jsonify({'error': str(e), 'series': []}), 500
+    finally:
+        loop.close()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

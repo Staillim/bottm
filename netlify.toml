@@ -4,20 +4,29 @@
   command = "echo 'No build needed'"
   functions = "netlify/functions"
 
-# Página principal - Catálogo
+# Página principal - Redirige al catálogo
 [[redirects]]
   from = "/"
-  to = "/index.html"
+  to = "/catalog.html"
   status = 200
 
-# Catálogo alternativo
+# Catálogo
 [[redirects]]
   from = "/catalog"
-  to = "/index.html"
+  to = "/catalog.html"
   status = 200
 
-# Ad viewer
+# Ad viewer (página separada del catálogo)
+[[redirects]]
+  from = "/ad"
+  to = "/ad_viewer.html"
+  status = 200
+
 [[redirects]]
   from = "/ad_viewer.html"
   to = "/ad_viewer.html"
   status = 200
+
+# Variables de entorno
+[context.production.environment]
+  NODE_VERSION = "18"

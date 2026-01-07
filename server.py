@@ -18,6 +18,33 @@ CORS(app, origins=['https://bottm.netlify.app', 'http://localhost:5000', '*'])
 # Inicializar base de datos
 db = None
 
+@app.route('/api/config')
+def get_config():
+    """Obtiene la configuración de Supabase para el cliente"""
+    # Extraer Project ID de DATABASE_URL
+    from config.settings import DATABASE_URL
+    
+    if DATABASE_URL and 'supabase.com' in DATABASE_URL:
+        # Extraer project ID de la URL
+        # Formato: postgresql+asyncpg://postgres.PROJECT_ID:password@...
+        try:
+            project_id = DATABASE_URL.split('postgres.')[1].split(':')[0]
+            supabase_url = f"https://{project_id}.supabase.co"
+            
+            # Nota: Para producción, deberías tener SUPABASE_KEY en .env
+            # Por ahora retornamos la URL para que se conecte vía API
+            return jsonify({
+                'mode': 'api',  # Usar API Flask en lugar de Supabase directo
+                'api_url': 'http://localhost:5000'
+            })
+        except:
+            pass
+    
+    return jsonify({
+        'mode': 'api',
+        'api_url': 'http://localhost:5000'
+    })
+
 async def run_migration():
     """Ejecuta la migración de base de datos si es necesaria"""
     try:
@@ -72,6 +99,11 @@ def serve_webapp():
     return send_file('webapp/ad_viewer_simple.html')
 
 @app.route('/catalog')
+def serve_catalog_page():
+    """Sirve el catálogo HTML"""
+    return send_file('webapp/catalog_supabase.html')
+
+@app.route('/catalog')
 @app.route('/webapp')
 def serve_catalog():
     """Sirve la Mini App del catálogo de películas"""
@@ -120,6 +152,58 @@ def get_movies():
         traceback.print_exc()
         print(f"Error getting movies: {e}")
         return jsonify({'error': str(e), 'movies': []}), 500
+    finally:
+        try:
+            if local_db:
+                loop.run_until_complete(local_db.engine.dispose())
+        except:
+            pass
+        loop.close()
+
+@app.route('/api/series')
+def get_series():
+    """Obtiene todas las series indexadas"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    local_db = None
+    
+    try:
+        local_db = DatabaseManager()
+        loop.run_until_complete(local_db.init_db())
+        
+        # Usar search_tv_shows con query vacío para obtener todas
+        series_list = loop.run_until_complete(local_db.search_tv_shows("", limit=1000))
+        
+        series_data = []
+        for show in series_list:
+            try:
+                series_data.append({
+                    'id': show.id,
+                    'name': show.name or 'Sin título',
+                    'original_name': show.original_name,
+                    'year': show.year,
+                    'overview': show.overview or '',
+                    'poster_url': show.poster_url or '',
+                    'backdrop_url': show.backdrop_url or '',
+                    'vote_average': float(show.vote_average) if show.vote_average else None,
+                    'genres': show.genres,
+                    'number_of_seasons': show.number_of_seasons,
+                    'status': show.status,
+                    'type': 'series'
+                })
+            except Exception as series_err:
+                print(f"Error procesando serie {show.id}: {series_err}")
+                continue
+        
+        return jsonify({
+            'series': series_data,
+            'total': len(series_data)
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error getting series: {e}")
+        return jsonify({'error': str(e), 'series': []}), 500
     finally:
         try:
             if local_db:
