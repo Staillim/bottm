@@ -33,6 +33,10 @@ from handlers.admin_users import (
     admin_users_command, handle_admin_user_callback, handle_admin_user_input
 )
 from handlers.group_search import handle_group_message, group_search_command
+from handlers.stats_channels import (
+    stats_canales_command, add_canal_command, list_canales_command,
+    handle_stats_callback
+)
 
 # Configurar logging
 logging.basicConfig(
@@ -112,6 +116,11 @@ def main():
     application.add_handler(CommandHandler("terminar_indexacion", finish_indexing_command))
     application.add_handler(CommandHandler("stats", stats_command))
     
+    # Comandos de estadísticas de canales
+    application.add_handler(CommandHandler("stats_canales", stats_canales_command))
+    application.add_handler(CommandHandler("add_canal", add_canal_command))
+    application.add_handler(CommandHandler("list_canales", list_canales_command))
+    
     # Comandos de tickets y referidos
     application.add_handler(CommandHandler("mistickets", mis_tickets_command))
     application.add_handler(CommandHandler("invitar", invitar_command))
@@ -129,6 +138,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_repost_callback, pattern="^repost_"))
     application.add_handler(CallbackQueryHandler(handle_tickets_callback, pattern="^tickets_"))
     application.add_handler(CallbackQueryHandler(handle_admin_user_callback, pattern="^admu_"))
+    application.add_handler(CallbackQueryHandler(handle_stats_callback, pattern="^stats_"))
     application.add_handler(CallbackQueryHandler(handle_callback, pattern="^(menu_|movie_|series_|season_|episode_|use_ticket_)"))
     application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify_"))
     application.add_handler(CallbackQueryHandler(video_callback, pattern="^video_"))

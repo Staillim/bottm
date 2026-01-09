@@ -172,3 +172,28 @@ class UserActivity(Base):
     content_type = Column(String(20))  # 'movie', 'episode'
     used_ticket = Column(Boolean, default=False)  # Si usó ticket para ver sin anuncio
     created_at = Column(DateTime, server_default=func.now())
+
+class ChannelSource(Base):
+    """Canales fuente para tracking de estadísticas"""
+    __tablename__ = 'channel_sources'
+    
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(String(100), unique=True, nullable=False)  # ej: "canal_principal"
+    channel_name = Column(String(200), nullable=False)  # ej: "@tu_canal_principal"
+    channel_url = Column(String(300))  # URL del canal
+    description = Column(Text)  # Descripción del canal
+    added_at = Column(DateTime, server_default=func.now())
+    is_active = Column(Boolean, default=True)
+
+class ChannelVisit(Base):
+    """Registro de visitas desde canales específicos"""
+    __tablename__ = 'channel_visits'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(BigInteger, nullable=False)
+    channel_source_id = Column(Integer, ForeignKey('channel_sources.id', ondelete='CASCADE'), nullable=False)
+    visited_at = Column(DateTime, server_default=func.now())
+    is_new_user = Column(Boolean, default=False)  # Si es primera vez que usa el bot
+    
+    # Relación
+    channel_source = relationship("ChannelSource")

@@ -23,8 +23,23 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         arg = context.args[0]
         print(f"🔍 Deep link detectado: {arg}")
         
+        # Procesar link de canal: cualquier string que no empiece con ref_ o movie_
+        if not arg.startswith("ref_") and not arg.startswith("movie_"):
+            try:
+                # Registrar visita desde canal
+                channel_id = arg
+                print(f"📊 Registrando visita desde canal: {channel_id}")
+                success = await db.register_channel_visit(user.id, channel_id)
+                if success:
+                    print(f"✅ Visita registrada para canal: {channel_id}")
+                else:
+                    print(f"❌ Error registrando visita para canal: {channel_id}")
+            except Exception as e:
+                print(f"Error procesando canal: {e}")
+            # Continuar con el flujo normal después de registrar la visita
+        
         # Procesar link de referido: ref_USER_ID
-        if arg.startswith("ref_"):
+        elif arg.startswith("ref_"):
             try:
                 referrer_id = int(arg.split("_")[1])
                 print(f"👥 Link de referido detectado: {referrer_id}")

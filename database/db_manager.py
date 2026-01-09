@@ -4,7 +4,8 @@ from sqlalchemy import select, or_, func, update
 from .models import (
     Base, User, Video, Search, Favorite, AdToken, BotConfig, 
     TvShow, Episode, UserNavigationState,
-    UserTicket, TicketTransaction, Referral, UserActivity
+    UserTicket, TicketTransaction, Referral, UserActivity,
+    ChannelSource, ChannelVisit
 )
 from config.settings import DATABASE_URL
 import unicodedata
@@ -935,3 +936,176 @@ class DatabaseManager:
                 'total_referrals': total_referrals.scalar() or 0,
                 'verified_referrals': verified_referrals.scalar() or 0
             }
+
+    # ======================
+    # MÉTODOS CHANNEL STATS
+    # ======================
+    
+    async def add_channel_source(self, channel_id: str, channel_name: str, channel_url: str = None, description: str = None):
+        """Agregar nuevo canal para tracking"""
+        try:
+            async with self.async_session() as session:
+                # Verificar si ya existe
+                existing = await session.execute(
+                    select(ChannelSource).where(ChannelSource.channel_id == channel_id)
+                )
+                if existing.scalar():
+                    return False, "El canal ya existe"
+                
+                channel = ChannelSource(
+                    channel_id=channel_id,
+                    channel_name=channel_name,
+                    channel_url=channel_url,
+                    description=description
+                )
+                session.add(channel)
+                await session.commit()
+                return True, "Canal agregado exitosamente"
+        except Exception as e:
+            logger.error(f"Error agregando canal: {e}")
+            return False, f"Error: {e}"
+    
+    async def register_channel_visit(self, user_id: int, channel_id: str):
+        """Registrar visita desde un canal específico"""
+        try:
+            async with self.async_session() as session:
+                # Buscar el canal source
+                channel_result = await session.execute(
+                    select(ChannelSource).where(ChannelSource.channel_id == channel_id)
+                )
+                channel = channel_result.scalar()
+                
+                if not channel:
+                    logger.warning(f"Canal {channel_id} no encontrado")
+                    return False
+                
+                # Verificar si es usuario nuevo
+                user_result = await session.execute(
+                    select(User).where(User.user_id == user_id)
+                )
+                is_new_user = user_result.scalar() is None
+                
+                # Registrar la visita
+                visit = ChannelVisit(
+                    user_id=user_id,
+                    channel_source_id=channel.id,
+                    is_new_user=is_new_user
+                )
+                session.add(visit)
+                await session.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error registrando visita: {e}")
+            return False
+    
+    async def get_channel_stats_by_period(self, period: str = 'today'):
+        """Obtener estadísticas de canales por período"""
+        try:
+            async with self.async_session() as session:
+                from datetime import datetime, timedelta
+                
+                now = datetime.now(timezone.utc)
+                
+                if period == 'today':
+                    start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                elif period == 'week':
+                    start_date = now - timedelta(days=7)
+                elif period == 'month':
+                    start_date = now - timedelta(days=30)
+                else:  # 'total'
+                    start_date = datetime(2020, 1, 1, tzinfo=timezone.utc)
+                
+                # Query para obtener stats por canal
+                query = select(
+                    ChannelSource.channel_id,
+                    ChannelSource.channel_name,
+                    ChannelSource.added_at,
+                    func.count(ChannelVisit.id).label('total_visits'),
+                    func.count(func.distinct(ChannelVisit.user_id)).label('unique_users'),
+                    func.sum(func.cast(ChannelVisit.is_new_user, Integer)).label('new_users'),
+                    func.max(ChannelVisit.visited_at).label('last_visit')
+                ).select_from(
+                    ChannelSource.__table__.join(
+                        ChannelVisit.__table__, 
+                        ChannelSource.id == ChannelVisit.channel_source_id,
+                        isouter=True
+                    )
+                ).where(
+                    ChannelSource.is_active == True
+                ).where(
+                    or_(
+                        ChannelVisit.visited_at >= start_date,
+                        ChannelVisit.visited_at.is_(None)
+                    ) if period != 'total' else True
+                ).group_by(
+                    ChannelSource.id,
+                    ChannelSource.channel_id,
+                    ChannelSource.channel_name,
+                    ChannelSource.added_at
+                ).order_by(
+                    func.count(func.distinct(ChannelVisit.user_id)).desc()
+                )
+                
+                result = await session.execute(query)
+                channels = result.fetchall()
+                
+                # Calcular totales
+                total_users = sum(c.unique_users or 0 for c in channels)
+                total_visits = sum(c.total_visits or 0 for c in channels)
+                
+                return {
+                    'channels': [
+                        {
+                            'channel_id': c.channel_id,
+                            'channel_name': c.channel_name,
+                            'added_at': c.added_at,
+                            'unique_users': c.unique_users or 0,
+                            'total_visits': c.total_visits or 0,
+                            'new_users': c.new_users or 0,
+                            'last_visit': c.last_visit
+                        } for c in channels
+                    ],
+                    'period': period,
+                    'total_users': total_users,
+                    'total_visits': total_visits,
+                    'start_date': start_date,
+                    'generated_at': now
+                }
+        except Exception as e:
+            logger.error(f"Error obteniendo stats de canales: {e}")
+            return {
+                'channels': [],
+                'period': period,
+                'total_users': 0,
+                'total_visits': 0,
+                'error': str(e)
+            }
+    
+    async def get_active_channel_sources(self):
+        """Obtener lista de canales activos"""
+        try:
+            async with self.async_session() as session:
+                result = await session.execute(
+                    select(ChannelSource)
+                    .where(ChannelSource.is_active == True)
+                    .order_by(ChannelSource.added_at.desc())
+                )
+                return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error obteniendo canales activos: {e}")
+            return []
+    
+    async def deactivate_channel_source(self, channel_id: str):
+        """Desactivar un canal source"""
+        try:
+            async with self.async_session() as session:
+                await session.execute(
+                    update(ChannelSource)
+                    .where(ChannelSource.channel_id == channel_id)
+                    .values(is_active=False)
+                )
+                await session.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Error desactivando canal: {e}")
+            return False
