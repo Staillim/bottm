@@ -83,6 +83,8 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
         await add_button_prompt(update, context)
     elif data == "broadcast_add_media":
         await add_media_prompt(update, context)
+    elif data == "broadcast_add_text":
+        await add_text_prompt(update, context)
     elif data == "broadcast_skip_buttons":
         await skip_buttons_and_preview(update, context)
     elif data == "broadcast_confirm":
@@ -206,7 +208,7 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
         return False
     
     # Verificar cancelación
-    if update.message.text == "/cancelar":
+    if update.message and update.message.text == "/cancelar":
         del broadcast_sessions[user_id]
         await update.message.reply_text("❌ Broadcast cancelado.")
         return True
@@ -256,15 +258,20 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
                     parse_mode='HTML'
                 )
             else:
-                session.awaiting_custom = True
+                # Si no hay mensaje previo, preguntar si quiere agregar texto
+                keyboard = [
+                    [InlineKeyboardButton("✍️ Agregar Texto", callback_data="broadcast_add_text")],
+                    [InlineKeyboardButton("➕ Agregar Botón", callback_data="broadcast_add_button")],
+                    [InlineKeyboardButton("🔄 Cambiar Multimedia", callback_data="broadcast_add_media")],
+                    [InlineKeyboardButton("✅ Enviar Solo Multimedia", callback_data="broadcast_skip_buttons")],
+                    [InlineKeyboardButton("❌ Cancelar", callback_data="broadcast_cancel")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
                 await update.message.reply_text(
                     f"{media_emoji} <b>{media_type.capitalize()} guardado!</b>\n\n"
-                    "📝 <b>Mensaje con Multimedia - Paso 2/3</b>\n\n"
-                    "Ahora escribe el mensaje que acompañará al archivo.\n\n"
-                    "Puedes usar HTML para formato:\n"
-                    "• <code>&lt;b&gt;texto&lt;/b&gt;</code> para <b>negrita</b>\n"
-                    "• <code>&lt;i&gt;texto&lt;/i&gt;</code> para <i>cursiva</i>\n\n"
-                    f"O envía /skip para enviar solo el {media_type}.",
+                    "¿Qué deseas hacer ahora?",
+                    reply_markup=reply_markup,
                     parse_mode='HTML'
                 )
         else:
@@ -277,7 +284,12 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
     
     # Estado 2: Esperando mensaje de texto
     if session.awaiting_custom:
-        message_text = update.message.text
+        message_text = update.message.text if update.message and update.message.text else None
+        
+        # Si no hay texto, verificar si está intentando cancelar o hacer skip
+        if not message_text:
+            # Si no hay texto y no es un comando, ignorar este mensaje
+            return True
         
         # Permitir skip si hay cualquier tipo de multimedia
         has_media = any([session.custom_video, session.custom_photo, session.custom_audio, session.custom_document])
@@ -821,12 +833,35 @@ async def add_media_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "🎥 <b>Agregar Multimedia</b>\n\n"
-        "Envía el archivo multimedia que deseas agregar al mensaje:\n\n"
-        "📹 Video (hasta 50MB)\n"
+        "Envía el archivo multimedia:\n\n"
+        "📹 Video\n"
         "📷 Foto\n"
         "🎵 Audio\n"
         "📄 Documento\n\n"
-        "El archivo se enviará junto con el mensaje de texto.\n\n"
+        "Envía /cancelar para cancelar.",
+        parse_mode='HTML'
+    )
+
+async def add_text_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Solicita al admin que agregue texto al multimedia"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    # Obtener sesión
+    session = broadcast_sessions.get(user_id)
+    if not session:
+        await query.edit_message_text("❌ Sesión no encontrada. Inicia un nuevo broadcast.")
+        return
+    
+    # Cambiar estado para esperar texto
+    session.awaiting_custom = True
+    
+    await query.edit_message_text(
+        "✍️ <b>Agregar Texto</b>\n\n"
+        "Escribe el mensaje que acompañará al archivo multimedia.\n\n"
+        "Puedes usar HTML para formato:\n"
+        "• <code>&lt;b&gt;texto&lt;/b&gt;</code> para <b>negrita</b>\n"
+        "• <code>&lt;i&gt;texto&lt;/i&gt;</code> para <i>cursiva</i>\n\n"
         "Envía /cancelar para cancelar.",
         parse_mode='HTML'
     )
