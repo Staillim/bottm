@@ -21,9 +21,12 @@ class BroadcastSession:
         self.message_type = None  # 'welcome', 'thanks', 'custom'
         self.custom_message = None
         self.custom_video = None  # Para almacenar video
+        self.custom_photo = None  # Para almacenar foto
+        self.custom_audio = None  # Para almacenar audio
+        self.custom_document = None  # Para almacenar documento
         self.custom_buttons = []
         self.awaiting_custom = False
-        self.awaiting_video = False  # Estado para recibir video
+        self.awaiting_video = False  # Estado para recibir multimedia
         self.awaiting_button_text = False
         self.awaiting_button_url = False
         self.current_button_text = None
@@ -43,7 +46,6 @@ async def broadcast_menu_command(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("👋 Mensaje de Bienvenida", callback_data="broadcast_welcome")],
         [InlineKeyboardButton("🙏 Mensaje de Agradecimiento", callback_data="broadcast_thanks")],
         [InlineKeyboardButton("✍️ Mensaje Personalizado", callback_data="broadcast_custom")],
-        [InlineKeyboardButton("🎥 Mensaje con Video", callback_data="broadcast_video")],
         [InlineKeyboardButton("🗑️ Eliminar Mensajes", callback_data="broadcast_delete")],
         [InlineKeyboardButton("📊 Ver Estadísticas", callback_data="broadcast_stats")]
     ]
@@ -70,8 +72,7 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
         await send_thanks_broadcast(update, context)
     elif data == "broadcast_custom":
         await request_custom_message(update, context)
-    elif data == "broadcast_video":
-        await request_custom_video_message(update, context)
+
     elif data == "broadcast_delete":
         await request_delete_broadcast(update, context)
     elif data == "broadcast_delete_confirm":
@@ -80,6 +81,8 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
         await show_broadcast_stats(update, context)
     elif data == "broadcast_add_button":
         await add_button_prompt(update, context)
+    elif data == "broadcast_add_media":
+        await add_media_prompt(update, context)
     elif data == "broadcast_skip_buttons":
         await skip_buttons_and_preview(update, context)
     elif data == "broadcast_confirm":
@@ -92,7 +95,6 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
             [InlineKeyboardButton("👋 Mensaje de Bienvenida", callback_data="broadcast_welcome")],
             [InlineKeyboardButton("🙏 Mensaje de Agradecimiento", callback_data="broadcast_thanks")],
             [InlineKeyboardButton("✍️ Mensaje Personalizado", callback_data="broadcast_custom")],
-            [InlineKeyboardButton("🎥 Mensaje con Video", callback_data="broadcast_video")],
             [InlineKeyboardButton("🗑️ Eliminar Mensajes", callback_data="broadcast_delete")],
             [InlineKeyboardButton("📊 Ver Estadísticas", callback_data="broadcast_stats")]
         ]
@@ -194,29 +196,6 @@ async def request_custom_message(update: Update, context: ContextTypes.DEFAULT_T
         parse_mode='HTML'
     )
 
-async def request_custom_video_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Solicita mensaje personalizado con video al admin"""
-    query = update.callback_query
-    user_id = update.effective_user.id
-    
-    # Crear sesión
-    session = BroadcastSession(user_id)
-    session.message_type = 'custom_video'
-    session.awaiting_video = True
-    broadcast_sessions[user_id] = session
-    
-    await query.edit_message_text(
-        "🎥 <b>Mensaje con Video - Paso 1/3</b>\n\n"
-        "Primero, envía el video que deseas compartir.\n\n"
-        "Puedes enviar:\n"
-        "• Video desde tu galería\n"
-        "• Video grabado en el momento\n"
-        "• Video desde una URL (forward)\n\n"
-        "Después podrás agregar texto y botones.\n\n"
-        "Envía /cancelar para cancelar.",
-        parse_mode='HTML'
-    )
-
 async def handle_custom_message_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja el input del mensaje personalizado y botones"""
     user_id = update.effective_user.id
@@ -232,26 +211,66 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
         await update.message.reply_text("❌ Broadcast cancelado.")
         return True
     
-    # Estado 1: Esperando video
+    # Estado 1: Esperando multimedia
     if session.awaiting_video:
+        media_type = None
+        media_id = None
+        media_emoji = None
+        
         if update.message.video:
             session.custom_video = update.message.video.file_id
+            media_type = "video"
+            media_emoji = "🎥"
+        elif update.message.photo:
+            session.custom_photo = update.message.photo[-1].file_id  # Obtener la foto de mayor calidad
+            media_type = "foto"
+            media_emoji = "📷"
+        elif update.message.audio:
+            session.custom_audio = update.message.audio.file_id
+            media_type = "audio"
+            media_emoji = "🎵"
+        elif update.message.document:
+            session.custom_document = update.message.document.file_id
+            media_type = "documento"
+            media_emoji = "📄"
+        
+        if media_type:
             session.awaiting_video = False
-            session.awaiting_custom = True
             
-            await update.message.reply_text(
-                "🎥 <b>Video guardado!</b>\n\n"
-                "📝 <b>Mensaje con Video - Paso 2/3</b>\n\n"
-                "Ahora escribe el mensaje que acompañará al video.\n\n"
-                "Puedes usar HTML para formato:\n"
-                "• <code>&lt;b&gt;texto&lt;/b&gt;</code> para <b>negrita</b>\n"
-                "• <code>&lt;i&gt;texto&lt;/i&gt;</code> para <i>cursiva</i>\n\n"
-                "O envía /skip para enviar solo el video.",
-                parse_mode='HTML'
-            )
+            # Si ya hay mensaje, ir a preview
+            if session.custom_message:
+                # Preguntar si quiere agregar botones
+                keyboard = [
+                    [InlineKeyboardButton("➕ Agregar Botón", callback_data="broadcast_add_button")],
+                    [InlineKeyboardButton("🎥 Cambiar Multimedia", callback_data="broadcast_add_media")],
+                    [InlineKeyboardButton("✅ Continuar sin botones", callback_data="broadcast_skip_buttons")],
+                    [InlineKeyboardButton("❌ Cancelar", callback_data="broadcast_cancel")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    f"{media_emoji} <b>{media_type.capitalize()} agregado al mensaje!</b>\n\n"
+                    f"📝 <b>Mensaje actual:</b>\n{session.custom_message}\n\n"
+                    "¿Deseas agregar botones al mensaje?",
+                    reply_markup=reply_markup,
+                    parse_mode='HTML'
+                )
+            else:
+                session.awaiting_custom = True
+                await update.message.reply_text(
+                    f"{media_emoji} <b>{media_type.capitalize()} guardado!</b>\n\n"
+                    "📝 <b>Mensaje con Multimedia - Paso 2/3</b>\n\n"
+                    "Ahora escribe el mensaje que acompañará al archivo.\n\n"
+                    "Puedes usar HTML para formato:\n"
+                    "• <code>&lt;b&gt;texto&lt;/b&gt;</code> para <b>negrita</b>\n"
+                    "• <code>&lt;i&gt;texto&lt;/i&gt;</code> para <i>cursiva</i>\n\n"
+                    f"O envía /skip para enviar solo el {media_type}.",
+                    parse_mode='HTML'
+                )
         else:
             await update.message.reply_text(
-                "❌ Por favor, envía un video.\n\n"
+                "❌ Por favor, envía un archivo multimedia válido:\n"
+                "📹 Video, 📷 Foto, 🎵 Audio o 📄 Documento\n\n"
                 "Envía /cancelar para cancelar el broadcast."
             )
         return True
@@ -260,25 +279,42 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
     if session.awaiting_custom:
         message_text = update.message.text
         
-        # Permitir skip si hay video
-        if message_text == "/skip" and session.custom_video:
+        # Permitir skip si hay cualquier tipo de multimedia
+        has_media = any([session.custom_video, session.custom_photo, session.custom_audio, session.custom_document])
+        if message_text == "/skip" and has_media:
             session.custom_message = ""
         else:
             session.custom_message = message_text
             
         session.awaiting_custom = False
         
-        # Preguntar si quiere agregar botones
+        # Determinar si ya hay multimedia
+        media_buttons = []
+        if has_media:
+            media_buttons.append([InlineKeyboardButton("🔄 Cambiar Multimedia", callback_data="broadcast_add_media")])
+        else:
+            media_buttons.append([InlineKeyboardButton("🎥 Agregar Video/Multimedia", callback_data="broadcast_add_media")])
+        
+        # Preguntar si quiere agregar botones o multimedia
         keyboard = [
             [InlineKeyboardButton("➕ Agregar Botón", callback_data="broadcast_add_button")],
+            *media_buttons,
             [InlineKeyboardButton("✅ Continuar sin botones", callback_data="broadcast_skip_buttons")],
             [InlineKeyboardButton("❌ Cancelar", callback_data="broadcast_cancel")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         preview_text = f"📝 <b>Mensaje guardado:</b>\n\n{message_text}\n\n"
+        
+        # Determinar qué tipo de multimedia hay
         if session.custom_video:
             preview_text = f"🎥 <b>Video + Mensaje guardados!</b>\n\n📝 <b>Texto:</b>\n{message_text}\n\n"
+        elif session.custom_photo:
+            preview_text = f"📷 <b>Foto + Mensaje guardados!</b>\n\n📝 <b>Texto:</b>\n{message_text}\n\n"
+        elif session.custom_audio:
+            preview_text = f"🎵 <b>Audio + Mensaje guardados!</b>\n\n📝 <b>Texto:</b>\n{message_text}\n\n"
+        elif session.custom_document:
+            preview_text = f"📄 <b>Documento + Mensaje guardados!</b>\n\n📝 <b>Texto:</b>\n{message_text}\n\n"
         
         await update.message.reply_text(
             f"{preview_text}"
@@ -485,11 +521,35 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for index, user in enumerate(users, 1):
             try:
-                # Si hay video, enviar video con caption
+                # Verificar si hay multimedia y enviar el tipo correspondiente
                 if session.custom_video:
                     await context.bot.send_video(
                         chat_id=user.user_id,
                         video=session.custom_video,
+                        caption=message_text if message_text else None,
+                        parse_mode='HTML',
+                        reply_markup=reply_markup
+                    )
+                elif session.custom_photo:
+                    await context.bot.send_photo(
+                        chat_id=user.user_id,
+                        photo=session.custom_photo,
+                        caption=message_text if message_text else None,
+                        parse_mode='HTML',
+                        reply_markup=reply_markup
+                    )
+                elif session.custom_audio:
+                    await context.bot.send_audio(
+                        chat_id=user.user_id,
+                        audio=session.custom_audio,
+                        caption=message_text if message_text else None,
+                        parse_mode='HTML',
+                        reply_markup=reply_markup
+                    )
+                elif session.custom_document:
+                    await context.bot.send_document(
+                        chat_id=user.user_id,
+                        document=session.custom_document,
                         caption=message_text if message_text else None,
                         parse_mode='HTML',
                         reply_markup=reply_markup
@@ -738,3 +798,35 @@ async def show_broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYP
             f"Error: {str(e)}",
             parse_mode='HTML'
         )
+
+async def add_media_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Solicita al admin que envíe multimedia para agregar al mensaje personalizado"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    # Obtener sesión
+    session = broadcast_sessions.get(user_id)
+    if not session:
+        await query.edit_message_text("❌ Sesión no encontrada. Inicia un nuevo broadcast.")
+        return
+    
+    # Limpiar multimedia anterior si existe
+    session.custom_video = None
+    session.custom_photo = None
+    session.custom_audio = None
+    session.custom_document = None
+    
+    # Cambiar estado para esperar multimedia
+    session.awaiting_video = True
+    
+    await query.edit_message_text(
+        "🎥 <b>Agregar Multimedia</b>\n\n"
+        "Envía el archivo multimedia que deseas agregar al mensaje:\n\n"
+        "📹 Video (hasta 50MB)\n"
+        "📷 Foto\n"
+        "🎵 Audio\n"
+        "📄 Documento\n\n"
+        "El archivo se enviará junto con el mensaje de texto.\n\n"
+        "Envía /cancelar para cancelar.",
+        parse_mode='HTML'
+    )
