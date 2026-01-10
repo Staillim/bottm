@@ -193,15 +193,15 @@ async def add_canal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
-            "❌ *Uso incorrecto*\n\n"
-            "*Formato:* `/add_canal <id_canal> <nombre_canal> [descripcion]`\n\n"
-            "*Ejemplo:*\n"
-            "`/add_canal canal_principal @mi_canal Canal principal de películas`\n\n"
-            "*Notas:*\n"
-            "• `id_canal`: Identificador único (sin espacios)\n"
-            "• `nombre_canal`: Nombre del canal (ej: @mi_canal)\n"
-            "• `descripcion`: Opcional, descripción del canal",
-            parse_mode='Markdown'
+            "❌ <b>Uso incorrecto</b>\n\n"
+            "<b>Formato:</b> <code>/add_canal &lt;id_canal&gt; &lt;nombre_canal&gt; [descripcion]</code>\n\n"
+            "<b>Ejemplo:</b>\n"
+            "<code>/add_canal canal_principal @mi_canal Canal principal de películas</code>\n\n"
+            "<b>Notas:</b>\n"
+            "• <code>id_canal</code>: Identificador único (sin espacios)\n"
+            "• <code>nombre_canal</code>: Nombre del canal (ej: @mi_canal)\n"
+            "• <code>descripcion</code>: Opcional, descripción del canal",
+            parse_mode='HTML'
         )
         return
     
@@ -225,17 +225,19 @@ async def add_canal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_username = context.bot.username
         tracking_link = f"https://t.me/{bot_username}?start={channel_id}"
         
-        response = f"✅ *Canal agregado exitosamente*\n\n"
-        response += f"📺 *Canal:* {channel_name}\n"
-        response += f"🆔 *ID:* `{channel_id}`\n"
+        response = f"✅ <b>Canal agregado exitosamente</b>\n\n"
+        response += f"📺 <b>Canal:</b> {channel_name}\n"
+        response += f"🆔 <b>ID:</b> <code>{channel_id}</code>\n"
         if description:
-            response += f"📝 *Descripción:* {description}\n"
-        response += f"\n🔗 *Enlace para usar en posts:*\n"
-        response += f"`{tracking_link}`\n\n"
-        response += "💡 *Cómo usar:*\n"
+            # Escapar HTML en la descripción
+            description_escaped = description.replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')
+            response += f"📝 <b>Descripción:</b> {description_escaped}\n"
+        response += f"\n🔗 <b>Enlace para usar en posts:</b>\n"
+        response += f"<code>{tracking_link}</code>\n\n"
+        response += "💡 <b>Cómo usar:</b>\n"
         response += "Publica este enlace en tu canal. Cuando alguien haga click, se registrará automáticamente la visita desde este canal."
         
-        await update.message.reply_text(response, parse_mode='Markdown')
+        await update.message.reply_text(response, parse_mode='HTML')
     else:
         await update.message.reply_text(f"❌ {message}")
 
@@ -255,28 +257,31 @@ async def list_canales_command(update: Update, context: ContextTypes.DEFAULT_TYP
         
         if not channels:
             await update.message.reply_text(
-                "📭 *No hay canales configurados*\n\n"
-                "Usa /add_canal para agregar tu primer canal."
+                "📭 <b>No hay canales configurados</b>\n\n"
+                "Usa /add_canal para agregar tu primer canal.",
+                parse_mode='HTML'
             )
             return
         
-        message = f"📺 *CANALES CONFIGURADOS* ({len(channels)})\n\n"
+        message = f"📺 <b>CANALES CONFIGURADOS</b> ({len(channels)})\n\n"
         
         bot_username = context.bot.username
         
         for i, channel in enumerate(channels, 1):
             tracking_link = f"https://t.me/{bot_username}?start={channel.channel_id}"
             
-            message += f"{i}️⃣ *{channel.channel_name}*\n"
-            message += f"   🆔 ID: `{channel.channel_id}`\n"
+            message += f"{i}️⃣ <b>{channel.channel_name}</b>\n"
+            message += f"   🆔 ID: <code>{channel.channel_id}</code>\n"
             if channel.description:
-                message += f"   📝 {channel.description}\n"
+                # Escapar HTML en la descripción
+                description = channel.description.replace('<', '&lt;').replace('>', '&gt;').replace('&', '&amp;')
+                message += f"   📝 {description}\n"
             message += f"   📅 Agregado: {channel.added_at.strftime('%d/%m/%Y')}\n"
-            message += f"   🔗 `{tracking_link}`\n\n"
+            message += f"   🔗 <code>{tracking_link}</code>\n\n"
         
-        message += "💡 *Para ver estadísticas usa:* /stats_canales"
+        message += "💡 <b>Para ver estadísticas usa:</b> /stats_canales"
         
-        await update.message.reply_text(message, parse_mode='Markdown')
+        await update.message.reply_text(message, parse_mode='HTML')
         
     except Exception as e:
         logger.error(f"Error en list_canales: {e}")
