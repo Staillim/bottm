@@ -81,10 +81,6 @@ async def handle_broadcast_callback(update: Update, context: ContextTypes.DEFAUL
         await show_broadcast_stats(update, context)
     elif data == "broadcast_add_button":
         await add_button_prompt(update, context)
-    elif data == "broadcast_add_media":
-        await add_media_prompt(update, context)
-    elif data == "broadcast_add_text":
-        await add_text_prompt(update, context)
     elif data == "broadcast_skip_buttons":
         await skip_buttons_and_preview(update, context)
     elif data == "broadcast_confirm":
@@ -300,17 +296,9 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
             
         session.awaiting_custom = False
         
-        # Determinar si ya hay multimedia
-        media_buttons = []
-        if has_media:
-            media_buttons.append([InlineKeyboardButton("🔄 Cambiar Multimedia", callback_data="broadcast_add_media")])
-        else:
-            media_buttons.append([InlineKeyboardButton("🎥 Agregar Video/Multimedia", callback_data="broadcast_add_media")])
-        
-        # Preguntar si quiere agregar botones o multimedia
+        # Preguntar si quiere agregar botones
         keyboard = [
             [InlineKeyboardButton("➕ Agregar Botón", callback_data="broadcast_add_button")],
-            *media_buttons,
             [InlineKeyboardButton("✅ Continuar sin botones", callback_data="broadcast_skip_buttons")],
             [InlineKeyboardButton("❌ Cancelar", callback_data="broadcast_cancel")]
         ]
@@ -456,32 +444,161 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         logger.info(f"Sesión encontrada, tipo: {session.message_type}")
         
-        # Obtener todos los usuarios primero
+        # Iniciar el broadcast en background
+        asyncio.create_task(execute_broadcast_background(query, context, session, user_id))
+        
+        # Responder inmediatamente al usuario
+        await query.edit_message_text(
+            "📤 <b>Broadcast Iniciado</b>\n\n"
+            "⏳ El envío ha comenzado en segundo plano.\n"
+            "🎯 El bot seguirá funcionando normalmente.\n\n"
+            "📊 Te notificaré cuando termine.",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error en confirm_broadcast: {e}", exc_info=True)
         try:
-            logger.info("Obteniendo lista de usuarios...")
-            users = await db.get_all_users()
-            total_users = len(users)
-            logger.info(f"Usuarios encontrados: {total_users}")
-            
-            if total_users == 0:
-                await query.edit_message_text(
-                    "⚠️ <b>No hay usuarios registrados</b>\n\n"
-                    "El bot aún no tiene usuarios en la base de datos.",
-                    parse_mode='HTML'
-                )
-                del broadcast_sessions[user_id]
-                return
-                
-        except Exception as e:
-            logger.error(f"Error obteniendo usuarios: {e}", exc_info=True)
             await query.edit_message_text(
-                f"❌ <b>Error obteniendo usuarios</b>\n\n"
+                f"❌ <b>Error iniciando broadcast</b>\n\n"
                 f"Error: {str(e)}",
                 parse_mode='HTML'
             )
-            if user_id in broadcast_sessions:
-                del broadcast_sessions[user_id]
+        except:
+            pass
+
+async def execute_broadcast_background(query, context, session, user_id):
+    """Ejecuta el broadcast en background sin bloquear el bot"""
+    try:
+        # Obtener todos los usuarios primero
+        logger.info("Obteniendo lista de usuarios...")
+        users = await db.get_all_users()
+        total_users = len(users)
+        logger.info(f"Usuarios encontrados: {total_users}")
+        
+        if total_users == 0:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="⚠️ <b>No hay usuarios registrados</b>\n\n"
+                     "El bot aún no tiene usuarios en la base de datos.",
+                parse_mode='HTML'
+            )
+            del broadcast_sessions[user_id]
             return
+            
+        # Determinar mensaje a enviar
+        logger.info(f"Determinando mensaje para tipo: {session.message_type}")
+        if session.message_type == 'welcome':
+            message_text = (
+                "👋 <b>¡Hola! ¿Estás aburrido?</b>\n\n"
+                "¿Qué quieres ver hoy? Tenemos varias opciones para ti:\n\n"
+                "🔍 Usa /buscar para encontrar películas o series\n"
+                "📺 Visita nuestro canal de verificación para ver el catálogo completo\n"
+                "💡 ¿No encuentras algo? ¡Solicita una nueva película o serie!\n\n"
+                "¡Disfruta! 🍿"
+            )
+            # Botones interactivos
+            keyboard = [
+                [InlineKeyboardButton("🔍 Buscar Ahora", callback_data="menu_main")],
+                [InlineKeyboardButton("📺 Ver Catálogo", url="https://t.me/CineStellar_S")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        elif session.message_type == 'thanks':
+            message_text = (
+                "🙏 <b>¡Gracias por usar CineStelar!</b>\n\n"
+                "Esperamos que hayas disfrutado tu película o serie. "
+                "Tu apoyo nos motiva a seguir mejorando.\n\n"
+                "Si tienes alguna sugerencia o quieres solicitar contenido, "
+                "¡no dudes en contactarnos!\n\n"
+                "🌟 ¡Hasta la próxima! 🌟"
+            )
+            reply_markup = None
+        else:  # custom
+            message_text = session.custom_message
+            # Crear botones personalizados si existen
+            if session.custom_buttons:
+                keyboard = [[InlineKeyboardButton(btn['text'], url=btn['url'])] for btn in session.custom_buttons]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+            else:
+                reply_markup = None
+        
+        # Enviar a todos los usuarios
+        sent_count = 0
+        failed_count = 0
+        
+        # Notificar inicio del envío
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"📤 <b>Iniciando envío...</b>\n\n"
+                 f"👥 Total usuarios: {total_users}\n"
+                 f"📊 Progreso: 0/{total_users} (0%)",
+            parse_mode='HTML'
+        )
+        
+        for index, user in enumerate(users, 1):
+            try:
+                # Enviar mensaje de texto
+                await context.bot.send_message(
+                    chat_id=user.user_id,
+                    text=message_text,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+                sent_count += 1
+                
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Error enviando a usuario {user.user_id}: {e}")
+            
+            # Actualizar progreso cada 25 usuarios o al final
+            if index % 25 == 0 or index == total_users:
+                try:
+                    percentage = int((index / total_users) * 100)
+                    await context.bot.send_message(
+                        chat_id=user_id,
+                        text=f"📤 <b>Progreso del envío...</b>\n\n"
+                             f"👥 Total usuarios: {total_users}\n"
+                             f"📊 Progreso: {index}/{total_users} ({percentage}%)\n"
+                             f"✅ Enviados: {sent_count}\n"
+                             f"❌ Fallidos: {failed_count}",
+                        parse_mode='HTML'
+                    )
+                except Exception as e:
+                    logger.error(f"Error actualizando progreso: {e}")
+            
+            # Pequeña pausa para evitar rate limit
+            await asyncio.sleep(0.05)
+        
+        # Limpiar sesión
+        if user_id in broadcast_sessions:
+            del broadcast_sessions[user_id]
+        
+        # Mostrar resultados finales
+        logger.info(f"Broadcast completado: enviados={sent_count}, fallidos={failed_count}")
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"✅ <b>Broadcast Completado</b>\n\n"
+                 f"📤 Enviados exitosamente: {sent_count}\n"
+                 f"❌ Fallidos: {failed_count}\n"
+                 f"👥 Total usuarios: {total_users}",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error general en execute_broadcast_background: {e}", exc_info=True)
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"❌ <b>Error ejecutando broadcast</b>\n\n"
+                     f"Error: {str(e)}\n\n"
+                     f"Por favor revisa los logs del servidor.",
+                parse_mode='HTML'
+            )
+        except:
+            pass
+        
+        if user_id in broadcast_sessions:
+            del broadcast_sessions[user_id]
         
         # Determinar mensaje a enviar
         logger.info(f"Determinando mensaje para tipo: {session.message_type}")
@@ -533,47 +650,13 @@ async def confirm_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for index, user in enumerate(users, 1):
             try:
-                # Verificar si hay multimedia y enviar el tipo correspondiente
-                if session.custom_video:
-                    await context.bot.send_video(
-                        chat_id=user.user_id,
-                        video=session.custom_video,
-                        caption=message_text if message_text else None,
-                        parse_mode='HTML',
-                        reply_markup=reply_markup
-                    )
-                elif session.custom_photo:
-                    await context.bot.send_photo(
-                        chat_id=user.user_id,
-                        photo=session.custom_photo,
-                        caption=message_text if message_text else None,
-                        parse_mode='HTML',
-                        reply_markup=reply_markup
-                    )
-                elif session.custom_audio:
-                    await context.bot.send_audio(
-                        chat_id=user.user_id,
-                        audio=session.custom_audio,
-                        caption=message_text if message_text else None,
-                        parse_mode='HTML',
-                        reply_markup=reply_markup
-                    )
-                elif session.custom_document:
-                    await context.bot.send_document(
-                        chat_id=user.user_id,
-                        document=session.custom_document,
-                        caption=message_text if message_text else None,
-                        parse_mode='HTML',
-                        reply_markup=reply_markup
-                    )
-                else:
-                    # Enviar mensaje de texto normal
-                    await context.bot.send_message(
-                        chat_id=user.user_id,
-                        text=message_text,
-                        parse_mode='HTML',
-                        reply_markup=reply_markup
-                    )
+                # Enviar mensaje de texto
+                await context.bot.send_message(
+                    chat_id=user.user_id,
+                    text=message_text,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
                 sent_count += 1
                 
             except Exception as e:

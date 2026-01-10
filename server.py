@@ -605,26 +605,6 @@ def run_telegram_bot():
         application.add_handler(CallbackQueryHandler(verify_callback, pattern="^verify_"))
         application.add_handler(CallbackQueryHandler(video_callback, pattern="^video_"))
         
-        # Handler de mensajes multimedia
-        async def handle_multimedia_message(update, context):
-            # Intentar manejar mensaje personalizado de broadcast primero
-            if await handle_custom_message_input(update, context):
-                return
-            
-            # Si no fue manejado por broadcast, proceso normal
-            user_id = update.effective_user.id
-            media_type = "unknown"
-            if update.message.photo:
-                media_type = "photo"
-            elif update.message.video:
-                media_type = "video"
-            elif update.message.audio:
-                media_type = "audio"
-            elif update.message.document:
-                media_type = "document"
-            
-            logger.info(f"User {user_id} sent {media_type}")
-        
         # Handler de mensajes de texto
         async def text_handler_with_auto_index(update, context):
             # Primero verificar si es mensaje de grupo para búsqueda inteligente
@@ -646,10 +626,6 @@ def run_telegram_bot():
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.Regex(r'\d+[xX]\d+'),
             index_episode_reply
-        ))
-        application.add_handler(MessageHandler(
-            filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.Document.ALL,
-            handle_multimedia_message
         ))
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND,

@@ -176,31 +176,6 @@ def main():
         filters.TEXT & ~filters.COMMAND & filters.Regex(r'\d+[xX]\d+'),
         index_episode_reply
     ))
-    
-    # Handler para multimedia
-    async def handle_multimedia_message(update, context):
-        # Intentar manejar mensaje personalizado de broadcast primero
-        if await handle_custom_message_input(update, context):
-            return
-        
-        # Si no fue manejado por broadcast, proceso normal
-        user_id = update.effective_user.id
-        media_type = "unknown"
-        if update.message.photo:
-            media_type = "photo"
-        elif update.message.video:
-            media_type = "video"
-        elif update.message.audio:
-            media_type = "audio"
-        elif update.message.document:
-            media_type = "document"
-        
-        logger.info(f"User {user_id} sent {media_type}")
-    
-    application.add_handler(MessageHandler(
-        filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.Document.ALL,
-        handle_multimedia_message
-    ))
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
         text_handler_with_auto_index
