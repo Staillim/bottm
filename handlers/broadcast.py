@@ -208,7 +208,7 @@ async def handle_custom_message_input(update: Update, context: ContextTypes.DEFA
         return False
     
     # Verificar cancelación
-    if update.message and update.message.text == "/cancelar":
+    if update.message and update.message.text and update.message.text == "/cancelar":
         del broadcast_sessions[user_id]
         await update.message.reply_text("❌ Broadcast cancelado.")
         return True
