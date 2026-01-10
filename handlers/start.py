@@ -24,10 +24,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"🔍 Deep link detectado: {arg}")
         
         # Procesar link de canal: solo parámetros que sean identificadores de canal
-        # Excluir ref_, movie_, video_ y otros parámetros especiales
+        # Excluir ref_, movie_, video_, series_, search_ y otros parámetros especiales
         if (not arg.startswith("ref_") and 
             not arg.startswith("movie_") and 
             not arg.startswith("video_") and
+            not arg.startswith("series_") and
             not arg.startswith("search_") and
             not arg.isdigit()):  # También excluir IDs numéricos puros
             try:
