@@ -1015,36 +1015,59 @@ class DatabaseManager:
                 else:  # 'total'
                     start_date = datetime(2020, 1, 1, tzinfo=timezone.utc)
                 
-                # Query para obtener stats por canal
-                query = select(
-                    ChannelSource.channel_id,
-                    ChannelSource.channel_name,
-                    ChannelSource.added_at,
-                    func.count(ChannelVisit.id).label('total_visits'),
-                    func.count(func.distinct(ChannelVisit.user_id)).label('unique_users'),
-                    func.sum(func.cast(ChannelVisit.is_new_user, Integer)).label('new_users'),
-                    func.max(ChannelVisit.visited_at).label('last_visit')
-                ).select_from(
-                    ChannelSource.__table__.join(
-                        ChannelVisit.__table__, 
-                        ChannelSource.id == ChannelVisit.channel_source_id,
-                        isouter=True
+                # Query para obtener stats por canal - versión simplificada
+                if period == 'total':
+                    # Para el total, no filtramos por fecha
+                    query = select(
+                        ChannelSource.channel_id,
+                        ChannelSource.channel_name,
+                        ChannelSource.added_at,
+                        func.count(ChannelVisit.id).label('total_visits'),
+                        func.count(func.distinct(ChannelVisit.user_id)).label('unique_users'),
+                        func.sum(func.cast(ChannelVisit.is_new_user, Integer)).label('new_users'),
+                        func.max(ChannelVisit.visited_at).label('last_visit')
+                    ).select_from(
+                        ChannelSource.__table__.join(
+                            ChannelVisit.__table__, 
+                            ChannelSource.id == ChannelVisit.channel_source_id,
+                            isouter=True
+                        )
+                    ).where(
+                        ChannelSource.is_active == True
+                    ).group_by(
+                        ChannelSource.id,
+                        ChannelSource.channel_id,
+                        ChannelSource.channel_name,
+                        ChannelSource.added_at
+                    ).order_by(
+                        func.count(func.distinct(ChannelVisit.user_id)).desc()
                     )
-                ).where(
-                    ChannelSource.is_active == True
-                ).where(
-                    or_(
-                        ChannelVisit.visited_at >= start_date,
-                        ChannelVisit.visited_at.is_(None)
-                    ) if period != 'total' else True
-                ).group_by(
-                    ChannelSource.id,
-                    ChannelSource.channel_id,
-                    ChannelSource.channel_name,
-                    ChannelSource.added_at
-                ).order_by(
-                    func.count(func.distinct(ChannelVisit.user_id)).desc()
-                )
+                else:
+                    # Para períodos específicos, usar SQL directo para evitar problemas de timezone
+                    query = select(
+                        ChannelSource.channel_id,
+                        ChannelSource.channel_name,
+                        ChannelSource.added_at,
+                        func.count(ChannelVisit.id).label('total_visits'),
+                        func.count(func.distinct(ChannelVisit.user_id)).label('unique_users'),
+                        func.sum(func.cast(ChannelVisit.is_new_user, Integer)).label('new_users'),
+                        func.max(ChannelVisit.visited_at).label('last_visit')
+                    ).select_from(
+                        ChannelSource.__table__.join(
+                            ChannelVisit.__table__, 
+                            ChannelSource.id == ChannelVisit.channel_source_id,
+                            isouter=True
+                        )
+                    ).where(
+                        ChannelSource.is_active == True
+                    ).group_by(
+                        ChannelSource.id,
+                        ChannelSource.channel_id,
+                        ChannelSource.channel_name,
+                        ChannelSource.added_at
+                    ).order_by(
+                        func.count(func.distinct(ChannelVisit.user_id)).desc()
+                    )
                 
                 result = await session.execute(query)
                 channels = result.fetchall()
