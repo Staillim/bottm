@@ -184,9 +184,10 @@ def clean_search_query(text: str) -> str:
         r'^tienen\s+',
         r'^hay\s+',
         r'^busco\s+',
-        r'^donde\s+(?:esta|veo|encuentro)\s+',
-        r'^como\s+se\s+llama\s+(?:la\s+)?(?:pelicula|serie)\s+(?:de\s+)?',
+        r'^donde\s+(?:esta|está|veo|encuentro)\s+',
+        r'^como\s+se\s+llama\s+(?:la\s+)?(?:pelicula|película|serie)\s+(?:de\s+)?',
         r'^(?:la\s+)?pelicula\s+(?:de\s+)?',
+        r'^(?:la\s+)?película\s+(?:de\s+)?',
         r'^(?:la\s+)?serie\s+(?:de\s+)?',
     ]
     
@@ -194,6 +195,26 @@ def clean_search_query(text: str) -> str:
         text = re.sub(prefix, '', text, flags=re.IGNORECASE)
     
     return text.strip()
+
+def normalize_text(text: str) -> str:
+    """
+    Normaliza texto para comparación, removiendo acentos y caracteres especiales
+    """
+    # Mapeo de caracteres con acentos a sin acentos
+    accent_map = {
+        'á': 'a', 'à': 'a', 'ä': 'a', 'â': 'a', 'ā': 'a', 'ă': 'a', 'ą': 'a',
+        'é': 'e', 'è': 'e', 'ë': 'e', 'ê': 'e', 'ē': 'e', 'ĕ': 'e', 'ę': 'e',
+        'í': 'i', 'ì': 'i', 'ï': 'i', 'î': 'i', 'ī': 'i', 'ĭ': 'i', 'į': 'i',
+        'ó': 'o', 'ò': 'o', 'ö': 'o', 'ô': 'o', 'ō': 'o', 'ŏ': 'o', 'ő': 'o',
+        'ú': 'u', 'ù': 'u', 'ü': 'u', 'û': 'u', 'ū': 'u', 'ŭ': 'u', 'ů': 'u',
+        'ñ': 'n', 'ç': 'c'
+    }
+    
+    text = text.lower()
+    for accented, unaccented in accent_map.items():
+        text = text.replace(accented, unaccented)
+    
+    return text
 
 def calculate_confidence(original_text: str, query: str, movies: list, series: list) -> float:
     """
@@ -203,36 +224,68 @@ def calculate_confidence(original_text: str, query: str, movies: list, series: l
     
     # Base score si hay resultados
     if movies or series:
-        score += 0.3
+        score += 0.2
     
     # Bonus alto si empieza con @ (búsqueda directa muy probable)
     if original_text.startswith('@'):
-        score += 0.5
+        score += 0.6
     
     # Bonus si el query es corto y específico (probablemente un título)
     words = query.split()
     if 1 <= len(words) <= 4:
-        score += 0.2
+        score += 0.1
+        # Bonus extra si es una sola palabra y tiene buena longitud (probable título)
+        if len(words) == 1 and len(query) >= 4:
+            score += 0.1
     
     # Bonus si tiene patrones de búsqueda explícitos
     search_patterns = ['alguien tiene', 'busco', 'donde', 'hay']
     if any(pattern in original_text.lower() for pattern in search_patterns):
-        score += 0.3
+        score += 0.2
     
-    # Bonus si el título coincide exactamente con algún resultado
-    query_lower = query.lower()
+    # Bonus ALTO si el título coincide EXACTAMENTE o muy bien con algún resultado
+    query_normalized = normalize_text(query)
+    
+    best_match_score = 0
     
     if movies:
         for movie in movies[:3]:
-            if query_lower in movie.title.lower():
-                score += 0.2
-                break
+            title_normalized = normalize_text(movie.title)
+            # Coincidencia exacta
+            if query_normalized == title_normalized:
+                best_match_score = max(best_match_score, 0.5)
+            # Query está contenido en título
+            elif query_normalized in title_normalized:
+                # Calcular qué tan grande es la coincidencia
+                match_ratio = len(query_normalized) / len(title_normalized)
+                if match_ratio > 0.7:  # Query cubre más del 70% del título
+                    best_match_score = max(best_match_score, 0.4)
+                elif match_ratio > 0.5:  # Query cubre más del 50% del título
+                    best_match_score = max(best_match_score, 0.3)
+                else:
+                    best_match_score = max(best_match_score, 0.1)
     
     if series:
         for show in series[:3]:
-            if query_lower in show.name.lower():
-                score += 0.2
-                break
+            name_normalized = normalize_text(show.name)
+            # Coincidencia exacta
+            if query_normalized == name_normalized:
+                best_match_score = max(best_match_score, 0.5)
+            # Query está contenido en nombre
+            elif query_normalized in name_normalized:
+                match_ratio = len(query_normalized) / len(name_normalized)
+                if match_ratio > 0.7:
+                    best_match_score = max(best_match_score, 0.4)
+                elif match_ratio > 0.5:
+                    best_match_score = max(best_match_score, 0.3)
+                else:
+                    best_match_score = max(best_match_score, 0.1)
+    
+    score += best_match_score
+    
+    # Penalizar si los resultados no son realmente relevantes
+    if best_match_score < 0.2:  # Si no hay buena coincidencia
+        score -= 0.2
     
     # Penalizar mensajes muy largos (probablemente conversación)
     if len(original_text.split()) > 15:

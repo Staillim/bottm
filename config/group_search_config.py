@@ -17,11 +17,12 @@ MAX_QUERY_LENGTH = 100
 # Valores recomendados:
 #   0.5 - Muy permisivo (responde frecuentemente)
 #   0.7 - Balance óptimo (recomendado)
+#   0.8 - Más estricto (mejor precisión)
 #   0.9 - Muy conservador (solo alta confianza)
-MIN_CONFIDENCE_SCORE = 0.7
+MIN_CONFIDENCE_SCORE = 0.8
 
 # Máximo de resultados a mostrar automáticamente
-MAX_AUTO_RESULTS = 3
+MAX_AUTO_RESULTS = 2
 
 # ======================
 # FILTROS AVANZADOS
