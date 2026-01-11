@@ -3,7 +3,7 @@ from telegram.ext import ContextTypes
 from config.settings import ADMIN_IDS, STORAGE_CHANNEL_ID, VERIFICATION_CHANNEL_ID
 from utils.tmdb_api import TMDBApi
 from utils.title_cleaner import clean_title, format_title_with_year
-from handlers.indexing_callbacks import IndexingSession, indexing_sessions, show_search_results
+from handlers.indexing_callbacks import IndexingSession, indexing_sessions, show_search_results, get_or_create_session
 import io
 import requests as req
 import os
@@ -23,9 +23,8 @@ async def indexar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = context.bot_data['db']
     
-    # Crear sesión de indexación
-    session = IndexingSession(user.id)
-    indexing_sessions[user.id] = session
+    # Crear o renovar sesión de indexación
+    session = get_or_create_session(user.id)
     
     # Obtener último mensaje indexado
     last_indexed_str = await db.get_config('last_indexed_message', '812')
@@ -325,9 +324,8 @@ async def indexar_manual_command(update: Update, context: ContextTypes.DEFAULT_T
         except:
             pass
         
-        # Crear sesión de indexación
-        session = IndexingSession(user.id)
-        indexing_sessions[user.id] = session
+        # Crear o renovar sesión de indexación
+        session = get_or_create_session(user.id)
         
         # Procesar con confirmación
         tmdb = TMDBApi()
@@ -440,10 +438,9 @@ async def reindex_search_tmdb(update, context, msg_id):
     
     # Crear sesión temporal
     user_id = update.effective_user.id
-    session = IndexingSession(user_id)
+    session = get_or_create_session(user_id)
     session.current_message_id = msg_id
     session.current_video_data = {'file_id': existing.file_id}
-    indexing_sessions[user_id] = session
     
     # Buscar
     tmdb = TMDBApi()
@@ -476,11 +473,10 @@ async def reindex_request_new_title(update, context, msg_id):
         await query.edit_message_text("❌ Video no encontrado en BD.")
         return
     
-    session = IndexingSession(user_id)
+    session = get_or_create_session(user_id)
     session.current_message_id = msg_id
     session.awaiting_title_input = True
     session.current_video_data = {'file_id': existing.file_id}
-    indexing_sessions[user_id] = session
     
     await query.edit_message_text(
         "✏️ <b>Buscar con nuevo título</b>\n\n"

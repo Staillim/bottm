@@ -9,12 +9,16 @@ from utils.title_cleaner import clean_title, format_title_with_year
 from config.settings import VERIFICATION_CHANNEL_ID
 import io
 import requests as req
+import time
 
 db = DatabaseManager()
 tmdb = TMDBApi()
 
 # Storage temporal de datos de indexación por usuario
 indexing_sessions = {}
+
+# Duración de sesión en segundos (6 horas)
+SESSION_DURATION = 6 * 60 * 60
 
 class IndexingSession:
     """Clase para almacenar el estado de una sesión de indexación"""
@@ -26,11 +30,52 @@ class IndexingSession:
         self.awaiting_title_input = False
         self.paused_at = None
         self.progress_message_id = None
+        self.created_at = time.time()  # Timestamp de creación
+        self.last_activity = time.time()  # Última actividad
         self.stats = {
             'indexed': 0,
             'skipped': 0,
             'errors': 0
         }
+    
+    def update_activity(self):
+        """Actualiza el timestamp de última actividad"""
+        self.last_activity = time.time()
+    
+    def is_expired(self):
+        """Verifica si la sesión ha expirado"""
+        return (time.time() - self.last_activity) > SESSION_DURATION
+
+def clean_expired_sessions():
+    """Limpia las sesiones expiradas"""
+    current_time = time.time()
+    expired_users = []
+    
+    for user_id, session in indexing_sessions.items():
+        if session.is_expired():
+            expired_users.append(user_id)
+    
+    for user_id in expired_users:
+        del indexing_sessions[user_id]
+    
+    return len(expired_users)
+
+def get_or_create_session(user_id):
+    """Obtiene una sesión existente o crea una nueva si no existe o ha expirado"""
+    # Limpiar sesiones expiradas primero
+    clean_expired_sessions()
+    
+    session = indexing_sessions.get(user_id)
+    
+    if session is None or session.is_expired():
+        # Crear nueva sesión
+        session = IndexingSession(user_id)
+        indexing_sessions[user_id] = session
+    else:
+        # Actualizar actividad
+        session.update_activity()
+    
+    return session
 
 async def handle_indexing_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja todos los callbacks relacionados con indexación"""
@@ -78,9 +123,17 @@ async def confirm_movie(update: Update, context: ContextTypes.DEFAULT_TYPE, call
     msg_id = int(parts[2])
     tmdb_id = int(parts[3])
     
-    session = indexing_sessions.get(user_id)
-    if not session or not session.search_results:
-        await query.edit_message_text("❌ Sesión expirada. Inicia indexación nuevamente.")
+    session = get_or_create_session(user_id)
+    
+    # Verificar que hay datos de búsqueda válidos
+    if not session.search_results:
+        hours_since = (time.time() - session.created_at) / 3600
+        await query.edit_message_text(
+            f"❌ Sesión expirada.\n"
+            f"🕐 Sesión creada hace {hours_since:.1f} horas\n"
+            f"⏰ Máximo permitido: {SESSION_DURATION/3600:.0f} horas\n\n"
+            f"Inicia indexación nuevamente."
+        )
         return
     
     # Buscar el resultado seleccionado
@@ -141,9 +194,17 @@ async def save_confirmed_movie(update: Update, context: ContextTypes.DEFAULT_TYP
     print(f"\n🔍 DEBUG save_confirmed_movie:")
     print(f"   msg_id desde callback: {msg_id}")
     
-    session = indexing_sessions.get(user_id)
-    if not session:
-        await query.edit_message_text("❌ Sesión expirada.")
+    session = get_or_create_session(user_id)
+    
+    # Verificar que la sesión tiene datos válidos
+    if not session.search_results:
+        hours_since = (time.time() - session.created_at) / 3600
+        await query.edit_message_text(
+            f"❌ Sesión expirada.\n"
+            f"🕐 Sesión creada hace {hours_since:.1f} horas\n"
+            f"⏰ Máximo permitido: {SESSION_DURATION/3600:.0f} horas\n\n"
+            f"Inicia indexación nuevamente."
+        )
         return
     
     print(f"   session.current_message_id: {session.current_message_id}")
@@ -252,9 +313,8 @@ async def cancel_save(update: Update, context: ContextTypes.DEFAULT_TYPE, callba
     parts = callback_data.split('_')
     msg_id = int(parts[2])
     
-    session = indexing_sessions.get(user_id)
-    if session:
-        session.stats['skipped'] += 1
+    session = get_or_create_session(user_id)
+    session.stats['skipped'] += 1
     
     await query.edit_message_text(
         f"⏭️ Video {msg_id} saltado.\n\n"
@@ -270,9 +330,17 @@ async def request_title_edit(update: Update, context: ContextTypes.DEFAULT_TYPE,
     parts = callback_data.split('_')
     msg_id = int(parts[2])
     
-    session = indexing_sessions.get(user_id)
-    if not session:
-        await query.edit_message_text("❌ Sesión expirada.")
+    session = get_or_create_session(user_id)
+    
+    # Verificar que la sesión es válida
+    if not hasattr(session, 'current_video_data') or not session.current_video_data:
+        hours_since = (time.time() - session.created_at) / 3600
+        await query.edit_message_text(
+            f"❌ Sesión expirada.\n"
+            f"🕐 Sesión creada hace {hours_since:.1f} horas\n"
+            f"⏰ Máximo permitido: {SESSION_DURATION/3600:.0f} horas\n\n"
+            f"Inicia indexación nuevamente."
+        )
         return
     
     session.awaiting_title_input = True
@@ -290,9 +358,9 @@ async def request_title_edit(update: Update, context: ContextTypes.DEFAULT_TYPE,
 async def handle_title_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja el input de título corregido del usuario"""
     user_id = update.effective_user.id
-    session = indexing_sessions.get(user_id)
+    session = get_or_create_session(user_id)
     
-    if not session or not session.awaiting_title_input:
+    if not session.awaiting_title_input:
         return False  # No es para nosotros
     
     new_title = update.message.text.strip()
@@ -384,9 +452,17 @@ async def select_from_results(update: Update, context: ContextTypes.DEFAULT_TYPE
     msg_id = int(parts[2])
     result_idx = int(parts[3])
     
-    session = indexing_sessions.get(user_id)
-    if not session or not session.search_results:
-        await query.edit_message_text("❌ Sesión expirada.")
+    session = get_or_create_session(user_id)
+    
+    # Verificar que hay resultados de búsqueda válidos
+    if not session.search_results:
+        hours_since = (time.time() - session.created_at) / 3600
+        await query.edit_message_text(
+            f"❌ Sesión expirada.\n"
+            f"🕐 Sesión creada hace {hours_since:.1f} horas\n"
+            f"⏰ Máximo permitido: {SESSION_DURATION/3600:.0f} horas\n\n"
+            f"Inicia indexación nuevamente."
+        )
         return
     
     if result_idx >= len(session.search_results):
@@ -406,13 +482,12 @@ async def skip_video(update: Update, context: ContextTypes.DEFAULT_TYPE, callbac
     parts = callback_data.split('_')
     msg_id = int(parts[2])
     
-    session = indexing_sessions.get(user_id)
-    if session:
-        session.stats['skipped'] += 1
+    session = get_or_create_session(user_id)
+    session.stats['skipped'] += 1
     
     await query.edit_message_text(
         f"⏭️ Video {msg_id} saltado.\n\n"
-        f"📊 Saltados: {session.stats['skipped'] if session else 1}"
+        f"📊 Saltados: {session.stats['skipped']}"
     )
 
 async def stop_indexing(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -420,7 +495,7 @@ async def stop_indexing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
     
-    session = indexing_sessions.get(user_id)
+    session = get_or_create_session(user_id)
     
     if session:
         stats_text = (

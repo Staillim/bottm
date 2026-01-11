@@ -23,7 +23,7 @@ from handlers.text_handler import handle_text_message
 from handlers.callbacks import handle_callback
 from handlers.series_admin import index_series_command, index_episode_reply, finish_indexing_command
 from handlers.admin_menu import admin_menu_command, admin_callback_handler, process_new_episode
-from handlers.indexing_callbacks import handle_title_input, handle_indexing_callback
+from handlers.indexing_callbacks import handle_title_input, handle_indexing_callback, clean_expired_sessions
 from handlers.broadcast import broadcast_menu_command, handle_broadcast_callback, handle_custom_message_input
 from handlers.tickets import (
     mis_tickets_command, invitar_command, mis_referidos_command,
@@ -83,6 +83,15 @@ async def help_command(update, context):
     """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
+async def session_cleanup_job(context):
+    """Job que se ejecuta cada hora para limpiar sesiones expiradas"""
+    try:
+        expired_count = clean_expired_sessions()
+        if expired_count > 0:
+            logger.info(f"🧹 Limpiadas {expired_count} sesiones expiradas")
+    except Exception as e:
+        logger.error(f"Error en limpieza de sesiones: {e}")
+
 async def post_init(application):
     """Ya no se usa - inicialización movida a main()"""
     pass
@@ -100,6 +109,13 @@ def main():
     
     # Guardar en bot_data
     application.bot_data['db'] = db
+    
+    # Configurar job para limpieza de sesiones (cada hora)
+    application.job_queue.run_repeating(
+        session_cleanup_job,
+        interval=3600,  # 1 hora en segundos
+        first=60  # Primera ejecución tras 1 minuto
+    )
     
     # Handlers de comandos
     application.add_handler(CommandHandler("start", start_command))
