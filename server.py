@@ -522,7 +522,7 @@ def run_telegram_bot():
         from handlers.admin_users import (
             admin_users_command, handle_admin_user_callback, handle_admin_user_input
         )
-        from handlers.group_search import handle_group_message, group_search_command
+        from handlers.group_search import handle_group_message
         from handlers.stats_channels import (
             stats_canales_command, add_canal_command, list_canales_command,
             handle_stats_callback
@@ -589,8 +589,7 @@ def run_telegram_bot():
         application.add_handler(CommandHandler("misreferidos", mis_referidos_command))
         application.add_handler(CommandHandler("usuarios", admin_users_command))
         
-        # Comando de búsqueda en grupos
-        application.add_handler(CommandHandler("search_group", group_search_command))
+        # Comando de búsqueda en grupos (removido - solo respuesta automática)
         
         # Handlers de callbacks
         application.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^admin_"))

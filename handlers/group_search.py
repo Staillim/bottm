@@ -42,7 +42,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     
     logger.info(f"📨 Mensaje de grupo recibido: '{message_text[:50]}...' de {update.effective_user.id}")
     
-    # Ignorar si es un comando
+    # Ignorar si es un comando (cualquier cosa que empiece con /)
     if message_text.startswith('/'):
         logger.debug(f"⏭️ Ignorando comando: {message_text}")
         return
@@ -52,8 +52,11 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.debug(f"⏭️ Mensaje ignorado por longitud: {len(message_text)} caracteres")
         return
     
-    # Filtrar mensajes que son conversación casual
-    if not is_potential_search_query(message_text):
+    # Priorizar mensajes que empiecen con @ (búsqueda directa)
+    starts_with_at = message_text.startswith('@')
+    
+    # Filtrar mensajes que son conversación casual (excepto si empiezan con @)
+    if not starts_with_at and not is_potential_search_query(message_text):
         logger.debug(f"⏭️ No parece búsqueda: '{message_text[:30]}...'")
         return
     
@@ -104,8 +107,13 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 def is_potential_search_query(text: str) -> bool:
     """
     Determina si el texto parece ser una búsqueda de película/serie
+    Prioriza mensajes con @ y nombres que parecen títulos
     """
     text_lower = text.lower()
+    
+    # Si empieza con @, es muy probable que sea una búsqueda
+    if text.startswith('@'):
+        return True
     
     # Ignorar mensajes muy conversacionales
     words = text_lower.split()
@@ -116,13 +124,12 @@ def is_potential_search_query(text: str) -> bool:
         if common_count / len(words) > 0.7:
             return False
     
-    # Si contiene solo palabras comunes, ignorar
-    if len(words) > 0 and all(word in IGNORE_WORDS for word in words):
+    # Si contiene solo palabras comunes, ignorar (excepto si es muy corto, podría ser título)
+    if len(words) > 1 and all(word in IGNORE_WORDS for word in words):
         return False
     
-    # Patrones que indican búsqueda de contenido
+    # Patrones que indican búsqueda de contenido (removido '^@' ya que se maneja arriba)
     search_indicators = [
-        r'^@',  # Mensaje que empieza con @ (búsqueda directa)
         r'alguien\s+(?:tiene|vio|conoce)',  # "alguien tiene/vio..."
         r'busco\s+',  # "busco..."
         r'tienen\s+',  # "tienen..."
@@ -140,15 +147,24 @@ def is_potential_search_query(text: str) -> bool:
         if re.search(pattern, text_lower):
             return True
     
-    # Si el mensaje tiene entre 2-6 palabras y empieza con mayúscula, 
-    # podría ser un título
-    if 2 <= len(words) <= 6 and text[0].isupper():
-        return True
-    
-    # Si tiene formato de título (palabras capitalizadas)
-    capitalized_words = sum(1 for word in words if word and word[0].isupper())
-    if capitalized_words >= 2 and capitalized_words / len(words) > 0.5:
-        return True
+    # Si el mensaje tiene entre 1-6 palabras y formato de título
+    if 1 <= len(words) <= 6:
+        # Contar palabras capitalizadas usando el texto original, no text_lower
+        original_words = text.split()
+        capitalized_words = sum(1 for word in original_words if word and word[0].isupper())
+        
+        # Para 1 palabra: debe empezar con mayúscula, tener al menos 4 caracteres
+        # y NO estar en palabras comunes
+        if len(words) == 1:
+            word = words[0]  # palabra en minúsculas para comparar
+            if (capitalized_words >= 1 and len(word) >= 4 and 
+                word not in IGNORE_WORDS and 
+                not word.isdigit()):  # No es solo un número
+                return True
+        
+        # Para múltiples palabras: al menos 2 deben estar capitalizadas
+        elif len(words) > 1 and capitalized_words >= 2:
+            return True
     
     return False
 
@@ -188,6 +204,10 @@ def calculate_confidence(original_text: str, query: str, movies: list, series: l
     # Base score si hay resultados
     if movies or series:
         score += 0.3
+    
+    # Bonus alto si empieza con @ (búsqueda directa muy probable)
+    if original_text.startswith('@'):
+        score += 0.5
     
     # Bonus si el query es corto y específico (probablemente un título)
     words = query.split()
@@ -294,38 +314,20 @@ async def send_group_results(update: Update, context: ContextTypes.DEFAULT_TYPE,
     except Exception as e:
         logger.error(f"Error logging group search: {e}")
 
+"""
+# COMANDO DESHABILITADO - El bot solo responde automáticamente en grupos
+# NO responde a comandos con /
+
 async def group_search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
+    \"\"\"
     Comando opcional para búsqueda manual en grupos: /search_group <query>
-    """
+    DESHABILITADO - Solo funciona respuesta automática ahora
+    \"\"\"
     logger.info(f"🔍 Comando /search_group ejecutado en chat {update.message.chat.id}")
     
-    if update.message.chat.type not in ['group', 'supergroup']:
-        await update.message.reply_text(
-            "Este comando solo funciona en grupos."
-        )
-        return
-    
-    if not context.args:
-        await update.message.reply_text(
-            "🔍 Uso: `/search_group <nombre de película o serie>`",
-            parse_mode='Markdown'
-        )
-        return
-    
-    query = " ".join(context.args)
-    logger.info(f"🔍 Búsqueda manual en grupo: '{query}'")
-    db = context.bot_data['db']
-    
-    # Buscar
-    movies = await db.search_videos(query, limit=5)
-    series = await db.search_tv_shows(query, limit=5)
-    
-    if not movies and not series:
-        await update.message.reply_text(
-            f"😔 No encontré resultados para: *{query}*",
-            parse_mode='Markdown'
-        )
-        return
-    
-    await send_group_results(update, context, movies, series, query)
+    await update.message.reply_text(
+        "🚫 Los comandos están deshabilitados en grupos.\n"
+        "Simplemente escribe @nombrepelicula o el nombre de la película/serie.",
+        parse_mode='Markdown'
+    )
+"""
