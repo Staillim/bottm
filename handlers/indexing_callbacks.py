@@ -628,16 +628,6 @@ async def send_group_notifications(context, title, year, storage_msg_id):
     
     print(f"📱 Enviando notificaciones a {len(NOTIFICATION_GROUPS)} grupo(s)...")
     
-    async def delete_message_job(context):
-        """Job para borrar el mensaje después de 1 hora"""
-        chat_id = context.job.data['chat_id']
-        message_id = context.job.data['message_id']
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
-            print(f"🗑️ Mensaje borrado del grupo {chat_id}")
-        except Exception as e:
-            print(f"⚠️ No se pudo borrar mensaje del grupo {chat_id}: {e}")
-    
     for group_id in NOTIFICATION_GROUPS:
         try:
             sent_message = await context.bot.send_message(
@@ -647,15 +637,6 @@ async def send_group_notifications(context, title, year, storage_msg_id):
                 reply_markup=keyboard
             )
             print(f"✅ Notificación enviada al grupo {group_id}")
-            
-            # Programar borrado en 1 hora
-            context.job_queue.run_once(
-                delete_message_job,
-                when=3600,  # 1 hora (3600 segundos)
-                data={'chat_id': group_id, 'message_id': sent_message.message_id},
-                name=f"delete_notification_{group_id}_{sent_message.message_id}"
-            )
-            print(f"⏰ Programado borrado en 1h para grupo {group_id}")
             
         except Exception as e:
             print(f"❌ Error enviando notificación al grupo {group_id}: {e}")
