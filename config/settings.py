@@ -24,6 +24,13 @@ elif VERIFICATION_CHANNEL_ID not in PUBLICATION_CHANNELS:
     # Asegurar que el canal de verificación siempre esté incluido
     PUBLICATION_CHANNELS.insert(0, VERIFICATION_CHANNEL_ID)
 
+# Lista de grupos donde enviar notificaciones de nuevas películas/series (separados por coma)
+NOTIFICATION_GROUPS = [
+    int(id.strip()) 
+    for id in os.getenv('NOTIFICATION_GROUPS', '').split(',') 
+    if id.strip() and id.strip().lstrip('-').isdigit()
+]
+
 DATABASE_URL = os.getenv('DATABASE_URL')
 TMDB_API_KEY = os.getenv('TMDB_API_KEY', '')
 ADMIN_IDS = [int(id.strip()) for id in os.getenv('ADMIN_IDS', '').split(',') if id.strip()]

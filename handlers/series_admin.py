@@ -237,6 +237,9 @@ async def scan_channel_for_episodes(update: Update, context: ContextTypes.DEFAUL
                         parse_mode='HTML',
                         reply_markup=keyboard
                     )
+                
+                # Enviar notificaciones a grupos
+                await send_group_notifications_series(context, show.name, show.year, show.id, indexed_count)
                     
             except Exception as e:
                 logger.error(f"Error al publicar en el canal: {e}")
@@ -535,3 +538,43 @@ async def finish_indexing_command(update: Update, context: ContextTypes.DEFAULT_
         "Puedes empezar a indexar otra serie con <code>/indexar_serie</code>",
         parse_mode='HTML'
     )
+
+async def send_group_notifications_series(context, series_name, year, series_id, episode_count):
+    """
+    Envía notificaciones cortas a grupos configurados cuando se agrega una nueva serie
+    
+    Args:
+        context: Contexto del bot
+        series_name: Nombre de la serie
+        year: Año de la serie 
+        series_id: ID de la serie en la base de datos
+        episode_count: Número de episodios indexados
+    """
+    from config.settings import NOTIFICATION_GROUPS
+    
+    if not NOTIFICATION_GROUPS:
+        print("📝 No hay grupos configurados para notificaciones")
+        return
+    
+    # Mensaje corto para grupos
+    group_message = f"📺 Nueva serie agregada: <b>{series_name}</b> ({year}) - {episode_count} episodios"
+    
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔍 Ver en el bot", url=f"https://t.me/{context.bot.username}?start=series_{series_id}")
+    ]])
+    
+    print(f"📱 Enviando notificaciones de serie a {len(NOTIFICATION_GROUPS)} grupo(s)...")
+    
+    for group_id in NOTIFICATION_GROUPS:
+        try:
+            await context.bot.send_message(
+                chat_id=group_id,
+                text=group_message,
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+            print(f"✅ Notificación de serie enviada al grupo {group_id}")
+        except Exception as e:
+            print(f"❌ Error enviando notificación de serie al grupo {group_id}: {e}")
+            continue

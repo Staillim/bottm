@@ -71,6 +71,9 @@ VERIFICATION_CHANNEL_USERNAME=tu_canal
 ADMIN_USER_IDS=123456789,987654321
 WEBAPP_URL=https://tu-webapp.netlify.app
 TMDB_API_KEY=tu_api_key_de_tmdb
+
+# Opcional: IDs de grupos para notificaciones 
+NOTIFICATION_GROUPS=-1001234567890,-1001098765432
 ```
 
 5. **Iniciar el bot**
@@ -151,6 +154,24 @@ bot/
 ```
 
 ## 🔧 Configuración Avanzada
+
+### 📱 Notificaciones a Grupos
+
+El bot puede enviar notificaciones automáticas a grupos cuando se agregan nuevas películas o series:
+
+```env
+# IDs de grupos para notificaciones (separados por coma)
+NOTIFICATION_GROUPS=-1001234567890,-1001098765432
+```
+
+**Características:**
+- ✅ Mensajes cortos que no saturan los grupos
+- ✅ Deep links directos al contenido en el bot  
+- ✅ Envío automático al indexar contenido
+- ✅ Soporte para múltiples grupos
+- ✅ Resistente a errores
+
+Ver guía completa: [CONFIGURACION_GRUPOS.md](CONFIGURACION_GRUPOS.md)
 
 ### Búsqueda en Grupos
 

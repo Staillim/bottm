@@ -516,6 +516,9 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id, o
                 print(f"❌ Error publicando en canal {channel_id}: {e}")
                 continue
         
+        # Enviar notificaciones a grupos
+        await send_group_notifications(context, title, year, storage_msg_id)
+        
         return main_msg
         
     except Exception as e:
@@ -523,4 +526,43 @@ async def publish_to_verification_channel(context, movie_data, storage_msg_id, o
         import traceback
         traceback.print_exc()
         return None
+
+async def send_group_notifications(context, title, year, storage_msg_id):
+    """
+    Envía notificaciones cortas a grupos configurados cuando se agrega una nueva película/serie
+    
+    Args:
+        context: Contexto del bot
+        title: Título de la película/serie
+        year: Año de la película/serie 
+        storage_msg_id: ID del mensaje en el canal de almacenamiento para deep link
+    """
+    from config.settings import NOTIFICATION_GROUPS
+    
+    if not NOTIFICATION_GROUPS:
+        print("📝 No hay grupos configurados para notificaciones")
+        return
+    
+    # Mensaje corto para grupos
+    group_message = f"🆕 Nueva película agregada: <b>{title}</b> ({year})"
+    
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔍 Ver en el bot", url=f"https://t.me/{context.bot.username}?start=video_{storage_msg_id}")
+    ]])
+    
+    print(f"📱 Enviando notificaciones a {len(NOTIFICATION_GROUPS)} grupo(s)...")
+    
+    for group_id in NOTIFICATION_GROUPS:
+        try:
+            await context.bot.send_message(
+                chat_id=group_id,
+                text=group_message,
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+            print(f"✅ Notificación enviada al grupo {group_id}")
+        except Exception as e:
+            print(f"❌ Error enviando notificación al grupo {group_id}: {e}")
+            continue
 
