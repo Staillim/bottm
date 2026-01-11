@@ -544,7 +544,7 @@ async def send_group_notifications(context, title, year, storage_msg_id):
         return
     
     # Mensaje corto para grupos
-    group_message = f"🆕 Nueva película agregada: <b>{title}</b> ({year})"
+    group_message = f"🆕 Se agregó <b>{title}</b> ({year})"
     
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     keyboard = InlineKeyboardMarkup([[

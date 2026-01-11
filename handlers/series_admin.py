@@ -557,7 +557,7 @@ async def send_group_notifications_series(context, series_name, year, series_id,
         return
     
     # Mensaje corto para grupos
-    group_message = f"📺 Nueva serie agregada: <b>{series_name}</b> ({year}) - {episode_count} episodios"
+    group_message = f"📺 Se agregó <b>{series_name}</b> ({year}) - {episode_count} episodios"
     
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     keyboard = InlineKeyboardMarkup([[
