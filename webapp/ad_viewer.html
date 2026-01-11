@@ -83,6 +83,16 @@
             opacity: 0.5;
         }
         
+        .watch-ad-btn.countdown {
+            background: linear-gradient(45deg, #ff6b6b 0%, #ee5a24 100%);
+            position: relative;
+        }
+        
+        .countdown-text {
+            font-size: 16px;
+            margin-top: 5px;
+        }
+        
         .loading {
             display: none;
             margin-top: 20px;
@@ -201,11 +211,27 @@
         // Variable para controlar si el anuncio se completó
         let adWasCompleted = false;
         let adWasShown = false;
+        let countdownTimer = null;
         
         // Callbacks del SDK de libtl.com - El SDK los invoca automáticamente
         window.adCompleted_10253964 = function() {
             console.log('✅ Anuncio completado exitosamente (callback automático)');
             adWasCompleted = true;
+            
+            // Limpiar timer si está corriendo
+            if (countdownTimer) {
+                clearTimeout(countdownTimer);
+                countdownTimer = null;
+            }
+            
+            // Habilitar botón inmediatamente si el anuncio se completa
+            const btn = document.getElementById('watchAdBtn');
+            btn.disabled = false;
+            btn.classList.remove('countdown');
+            btn.innerHTML = '✅ Continuar';
+            btn.setAttribute('data-mode', 'continue');
+            btn.onclick = onAdComplete;
+            
             onAdComplete();
         };
         
@@ -216,9 +242,19 @@
         
         window.adError_10253964 = function(error) {
             console.error('❌ Error en el anuncio:', error);
+            
+            // Limpiar timer si está corriendo
+            if (countdownTimer) {
+                clearTimeout(countdownTimer);
+                countdownTimer = null;
+            }
+            
             const btn = document.getElementById('watchAdBtn');
             btn.disabled = false;
-            btn.textContent = '▶️ Reintentar Ver Anuncio';
+            btn.classList.remove('countdown');
+            btn.innerHTML = '▶️ Reintentar Ver Anuncio';
+            btn.removeAttribute('data-mode');
+            btn.onclick = showAd;
             tg.showAlert('Error al cargar el anuncio. Por favor intenta de nuevo.');
         };
         
@@ -233,7 +269,30 @@
             }
 
             btn.disabled = true;
-            btn.textContent = '⏳ Procesando...';
+            btn.classList.add('countdown');
+            
+            // Iniciar countdown de 15 segundos
+            let timeLeft = 15;
+            
+            function updateCountdown() {
+                btn.innerHTML = `⏳ Espera ${timeLeft} segundos`;
+                timeLeft--;
+                
+                if (timeLeft >= 0) {
+                    countdownTimer = setTimeout(updateCountdown, 1000);
+                } else {
+                    // Countdown terminado, cambiar a continuar
+                    btn.disabled = false;
+                    btn.classList.remove('countdown');
+                    btn.innerHTML = '✅ Continuar';
+                    btn.setAttribute('data-mode', 'continue');
+                    btn.onclick = onAdComplete;
+                    console.log('✅ Countdown completado - Botón habilitado');
+                }
+            }
+            
+            // Iniciar el countdown
+            updateCountdown();
             
             // Intentar mostrar anuncio (opcional, sin bloquear)
             try {
@@ -244,19 +303,6 @@
             } catch (error) {
                 console.log('Error SDK (ignorado):', error);
             }
-            
-            // Cambiar a botón Continuar rápidamente (2 segundos)
-            setTimeout(function() {
-                btn.disabled = false;
-                btn.textContent = '✅ Continuar';
-                btn.setAttribute('data-mode', 'continue');
-                btn.classList.add('ready'); // Clase opcional para estilo
-                
-                // Actualizar onclick para ir directo a completar
-                btn.onclick = onAdComplete;
-                
-                console.log('✅ Botón cambiado a Continuar');
-            }, 2000);
         }
         
         // Función que se ejecuta cuando el anuncio se completa REALMENTE
