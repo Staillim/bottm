@@ -567,7 +567,7 @@ async def send_group_notifications_series(context, series_name, year, series_id,
     print(f"📱 Enviando notificaciones de serie a {len(NOTIFICATION_GROUPS)} grupo(s)...")
     
     async def delete_series_message_job(context):
-        """Job para borrar el mensaje de serie después de 30 segundos"""
+        """Job para borrar el mensaje de serie después de 1 hora"""
         chat_id = context.job.data['chat_id']
         message_id = context.job.data['message_id']
         try:
@@ -586,14 +586,14 @@ async def send_group_notifications_series(context, series_name, year, series_id,
             )
             print(f"✅ Notificación de serie enviada al grupo {group_id}")
             
-            # Programar borrado en 30 segundos
+            # Programar borrado en 1 hora
             context.job_queue.run_once(
                 delete_series_message_job,
-                when=30,  # 30 segundos
+                when=3600,  # 1 hora (3600 segundos)
                 data={'chat_id': group_id, 'message_id': sent_message.message_id},
                 name=f"delete_series_notification_{group_id}_{sent_message.message_id}"
             )
-            print(f"⏰ Programado borrado en 30s para grupo {group_id}")
+            print(f"⏰ Programado borrado en 1h para grupo {group_id}")
             
         except Exception as e:
             print(f"❌ Error enviando notificación de serie al grupo {group_id}: {e}")
